@@ -6,6 +6,8 @@ All graphics are procedurally generated in code — no external art assets, no a
 
 ![status](https://img.shields.io/badge/built%20with-pygame--ce-blue) ![python](https://img.shields.io/badge/python-3.12-blue)
 
+**▶ Play in your browser:** <https://krishnakaanchan-png.github.io/BabelsGlyph/>
+
 ## Two builds
 
 | Folder | Target | How to run |
