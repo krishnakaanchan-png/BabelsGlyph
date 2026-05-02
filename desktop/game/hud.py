@@ -4,6 +4,7 @@ import pygame
 
 from .constants import SCREEN_W, SCREEN_H
 from . import render as R
+from . import fonts
 
 
 ZONE_NAMES = ["Sandstone Outskirts", "Da Vinci's Forge", "Sky Workshop"]
@@ -11,11 +12,15 @@ ZONE_NAMES = ["Sandstone Outskirts", "Da Vinci's Forge", "Sky Workshop"]
 
 class HUD:
     def __init__(self) -> None:
-        self.font_xs   = pygame.font.SysFont("consolas", 12)
-        self.font_sm   = pygame.font.SysFont("consolas", 14)
-        self.font_md   = pygame.font.SysFont("consolas", 18, bold=True)
-        self.font_big  = pygame.font.SysFont("consolas", 36, bold=True)
-        self.font_huge = pygame.font.SysFont("consolas", 56, bold=True)
+        # Body face (IBM Plex Sans) for HUD readouts and instructions.
+        self.font_xs   = fonts.body(12, weight="regular")
+        self.font_sm   = fonts.body(14, weight="regular")
+        self.font_md   = fonts.body(18, weight="medium")
+        # Display face (Cinzel) for titles and big stats.
+        self.font_big  = fonts.display(40, bold=True)
+        self.font_huge = fonts.display(64, bold=True)
+        # Title gets extra letter-spacing applied at render time.
+        self._title_tracking = 6
 
     def _text(self, surf, font, text, pos, color=R.BONE, shadow=True):
         if shadow:
@@ -23,6 +28,35 @@ class HUD:
             surf.blit(sh, (pos[0] + 1, pos[1] + 1))
         img = font.render(text, True, color)
         surf.blit(img, pos)
+
+    def _render_tracked(self, font, text, color, tracking):
+        """Render `text` with extra horizontal spacing between glyphs.
+
+        Cinzel's Roman caps look chiselled with a few px of tracking;
+        we render each character separately and stitch them together.
+        """
+        glyphs = [font.render(ch, True, color) for ch in text]
+        if not glyphs:
+            return font.render("", True, color)
+        total_w = sum(g.get_width() for g in glyphs) + tracking * (len(glyphs) - 1)
+        h = max(g.get_height() for g in glyphs)
+        out = pygame.Surface((total_w, h), pygame.SRCALPHA)
+        x = 0
+        for g in glyphs:
+            out.blit(g, (x, 0))
+            x += g.get_width() + tracking
+        return out
+
+    def _draw_title_text(self, surf, text, y, color, tracking=None, shadow=True):
+        """Render a Cinzel display string centred at (CX, y) with shadow."""
+        if tracking is None:
+            tracking = self._title_tracking
+        img = self._render_tracked(self.font_huge, text, color, tracking)
+        x = SCREEN_W // 2 - img.get_width() // 2
+        if shadow:
+            sh = self._render_tracked(self.font_huge, text, R.STONE_DARK, tracking)
+            surf.blit(sh, (x + 2, y + 3))
+        surf.blit(img, (x, y))
 
     def _heart_icon(self, surf, x, y, full: bool):
         c = R.HEART_RED if full else R.STONE_DARK
@@ -77,10 +111,9 @@ class HUD:
         s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         s.fill((0, 0, 0, 110))
         surf.blit(s, (0, 0))
-        title = self.font_huge.render("BABEL'S GLYPH", True, R.GLYPH_GLOW)
-        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 90))
+        self._draw_title_text(surf, "BABEL’S GLYPH", 80, R.GLYPH_GLOW)
         sub = self.font_md.render("An Endless Run Through Ancient Tech", True, R.BONE)
-        surf.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 158))
+        surf.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 168))
 
         lines = [
             "Outrun the collapsing past. Avoid hazards. Collect glyphs.",
@@ -108,9 +141,7 @@ class HUD:
         s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         s.fill((0, 0, 0, 170))
         surf.blit(s, (0, 0))
-        msg = "BURIED BY TIME"
-        t = self.font_huge.render(msg, True, R.BLOOD)
-        surf.blit(t, (SCREEN_W // 2 - t.get_width() // 2, 120))
+        self._draw_title_text(surf, "BURIED BY TIME", 110, R.BLOOD)
 
         stats = [
             f"Distance:  {int(distance_m)} m",
