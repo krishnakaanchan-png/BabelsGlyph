@@ -1,5 +1,6 @@
-"""Babel's Glyph — endless side-scrolling auto-runner."""
+"""Babel's Glyph — endless side-scrolling auto-runner (web build)."""
 from __future__ import annotations
+import asyncio
 import sys
 import pygame
 
@@ -89,8 +90,9 @@ class Game:
                 audio.get().toggle_muted()
 
     # ------------------------------------------------------------------
-    def run(self) -> None:
-        while True:
+    async def run(self) -> None:
+        running = True
+        while running:
             dt = self.clock.tick(TARGET_FPS) / 1000.0
             if dt > 1 / 20:
                 dt = 1 / 20
@@ -102,11 +104,13 @@ class Game:
             # AFTER the event pump so movement is up to date for this frame.
             self.input.end_frame()
 
-            # Esc handling is scene-dependent in NAME (cancel/exit), otherwise
-            # it quits the game.
+            # Esc handling: in the browser we bounce back to title rather
+            # than killing the tab; on desktop it quits.
             if self.scene != NAME and self.input.quit_pressed:
-                pygame.quit()
-                sys.exit(0)
+                if sys.platform == "emscripten":
+                    self.scene = TITLE
+                else:
+                    running = False
 
             # Audio mute toggles work in any non-text scene.
             if self.scene != NAME:
@@ -127,6 +131,13 @@ class Game:
 
             self._render()
             pygame.display.flip()
+
+            # Yield to the browser's event loop. This is what makes the
+            # tab responsive under pygbag/emscripten; on desktop it's a
+            # near-zero-cost no-op.
+            await asyncio.sleep(0)
+
+        pygame.quit()
 
     def _update_name_entry(self) -> None:
         if self.input.text_submit:
@@ -246,7 +257,7 @@ class Game:
 
 
 def main() -> None:
-    Game().run()
+    asyncio.run(Game().run())
 
 
 if __name__ == "__main__":
