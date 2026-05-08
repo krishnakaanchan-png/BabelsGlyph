@@ -98,6 +98,9 @@ class Game:
             self.input.begin_frame()
             for ev in pygame.event.get():
                 self.input.handle_event(ev)
+            # Combine keyboard + gamepad held states (and poll triggers)
+            # AFTER the event pump so movement is up to date for this frame.
+            self.input.end_frame()
 
             # Esc handling is scene-dependent in NAME (cancel/exit), otherwise
             # it quits the game.
@@ -119,7 +122,7 @@ class Game:
             elif self.scene == PLAYING:
                 self._update_play(dt)
             elif self.scene == DEAD:
-                if self.input.restart_pressed:
+                if self.input.restart_pressed or self.input.start_pressed:
                     self.start_play()
 
             self._render()
@@ -196,6 +199,7 @@ class Game:
                 scores=scores,
                 player_name=pname,
                 board_status=status,
+                gamepad_connected=self.input.gamepad_connected,
             )
         elif self.scene == PLAYING:
             self.hud.draw_playing(
@@ -228,6 +232,7 @@ class Game:
                 scores=scores,
                 player_name=pname,
                 board_status=status,
+                gamepad_connected=self.input.gamepad_connected,
             )
 
         # Audio buttons are drawn last so they sit on top of every overlay

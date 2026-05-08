@@ -145,7 +145,8 @@ class HUD:
 
     def draw_title(self, surf, highscore=None, *, scores=None,
                    player_name: str | None = None,
-                   board_status: str | None = None):
+                   board_status: str | None = None,
+                   gamepad_connected: bool = False):
         s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         s.fill((0, 0, 0, 110))
         surf.blit(s, (0, 0))
@@ -172,8 +173,17 @@ class HUD:
             "Wall-press while falling = wall-slide",
             "M / N    mute music / sfx",
             "P        change player name",
+        ]
+        if gamepad_connected:
+            lines += [
+                "",
+                "Gamepad: Stick/D-pad move,  A jump,",
+                "X bomb,  LB/RB or trigger dash,",
+                "Start to begin / restart",
+            ]
+        lines += [
             "",
-            "Press SPACE to begin",
+            "Press SPACE to begin" + ("  (or A)" if gamepad_connected else ""),
         ]
         y = 170
         col_x = 60
@@ -194,7 +204,8 @@ class HUD:
 
     def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record,
                       *, scores=None, player_name: str | None = None,
-                      board_status: str | None = None):
+                      board_status: str | None = None,
+                      gamepad_connected: bool = False):
         s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         s.fill((0, 0, 0, 170))
         surf.blit(s, (0, 0))
@@ -220,7 +231,11 @@ class HUD:
             highlight_name=player_name, status=board_status, max_rows=8,
         )
 
-        hint = self.font_md.render("Press R to restart   Esc to quit", True, R.BONE)
+        hint = self.font_md.render(
+            "Press R to restart   Esc to quit"
+            + ("    (Pad: A or Start = restart)" if gamepad_connected else ""),
+            True, R.BONE,
+        )
         surf.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 36))
 
     # ------------------------------------------------------------------

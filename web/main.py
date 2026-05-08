@@ -1,6 +1,5 @@
-"""Babel's Glyph — endless side-scrolling auto-runner (web build)."""
+"""Babel's Glyph — endless side-scrolling auto-runner."""
 from __future__ import annotations
-import asyncio
 import sys
 import pygame
 
@@ -19,6 +18,7 @@ TITLE   = "title"
 PLAYING = "playing"
 DEAD    = "dead"
 
+# How many world pixels equal "one meter" for the distance display.
 PIXELS_PER_METER = 50.0
 
 
@@ -40,7 +40,9 @@ class Game:
         self.input = Input()
         self.hud = HUD()
         self.highscore_m = 0.0
+        self._submitted_this_run = False
         self._reset_world()
+        # Decide where to start: name entry on first launch, otherwise title.
         if profile.has_name():
             self.scene = TITLE
         else:
@@ -52,6 +54,7 @@ class Game:
         self.chunks_lib = Chunks()
         self.world = World(self.chunks_lib, self.entities)
         self.world.reset()
+        # Player starts on the start chunk's ground floor (row 14 top).
         self.player = Player(120.0, 14 * 32 - 38)
         self._new_record_this_run = False
         self._death_played = False
@@ -85,34 +88,25 @@ class Game:
             elif target == "sfx":
                 audio.get().toggle_muted()
 
-    def _update_name_entry(self) -> None:
-        if self.input.text_submit:
-            profile.set_name(self.input.text_buffer)
-            audio.get().play("glyph")
-            self._exit_name_scene()
-        elif self.input.text_cancel and profile.has_name():
-            self._exit_name_scene()
-
     # ------------------------------------------------------------------
-    async def run(self) -> None:
-        running = True
-        while running:
+    def run(self) -> None:
+        while True:
             dt = self.clock.tick(TARGET_FPS) / 1000.0
             if dt > 1 / 20:
                 dt = 1 / 20
 
             self.input.begin_frame()
             for ev in pygame.event.get():
-                if ev.type == pygame.QUIT:
-                    running = False
                 self.input.handle_event(ev)
+            # Combine keyboard + gamepad held states (and poll triggers)
+            # AFTER the event pump so movement is up to date for this frame.
+            self.input.end_frame()
 
-            # Esc handling is scene-dependent.
+            # Esc handling is scene-dependent in NAME (cancel/exit), otherwise
+            # it quits the game.
             if self.scene != NAME and self.input.quit_pressed:
-                if sys.platform == "emscripten":
-                    self.scene = TITLE
-                else:
-                    running = False
+                pygame.quit()
+                sys.exit(0)
 
             # Audio mute toggles work in any non-text scene.
             if self.scene != NAME:
@@ -128,30 +122,37 @@ class Game:
             elif self.scene == PLAYING:
                 self._update_play(dt)
             elif self.scene == DEAD:
-                if self.input.restart_pressed:
+                if self.input.restart_pressed or self.input.start_pressed:
                     self.start_play()
 
             self._render()
             pygame.display.flip()
 
-            # Yield to the browser's event loop (no-op on desktop).
-            await asyncio.sleep(0)
-
-        pygame.quit()
+    def _update_name_entry(self) -> None:
+        if self.input.text_submit:
+            stored = profile.set_name(self.input.text_buffer)
+            audio.get().play("glyph")
+            self._exit_name_scene()
+        elif self.input.text_cancel and profile.has_name():
+            # Allow Esc to back out only if we already had a name.
+            self._exit_name_scene()
 
     def _update_play(self, dt: float) -> None:
+        # Order matters: world scroll first, then player, then entities.
         self.world.update(dt, self.player.x)
         self.player.update(dt, self.input, self.world, self.entities)
         self.entities.update_all(dt, self.world, self.player)
         particles.get().update(dt)
-
         if not self.player.alive:
             self.scene = DEAD
             run_m = self.world.distance / PIXELS_PER_METER
             if run_m > self.highscore_m:
                 self.highscore_m = run_m
                 self._new_record_this_run = True
-            # Play the death/record sting exactly ONCE per run.
+            # Play the death/record sting exactly ONCE per run, and let
+            # any overlapping SFX (hit/explode) finish naturally on their
+            # own channels - we no longer stop them, since cutting a Sound
+            # mid-playback can produce a hard click on some drivers.
             if not self._death_played:
                 self._death_played = True
                 if self._new_record_this_run:
@@ -167,6 +168,7 @@ class Game:
                     int(self.player.glyphs),
                 )
 
+        # Restart hotkey works mid-run.
         if self.input.restart_pressed:
             self.start_play()
 
@@ -197,6 +199,7 @@ class Game:
                 scores=scores,
                 player_name=pname,
                 board_status=status,
+                gamepad_connected=self.input.gamepad_connected,
             )
         elif self.scene == PLAYING:
             self.hud.draw_playing(
@@ -229,6 +232,7 @@ class Game:
                 scores=scores,
                 player_name=pname,
                 board_status=status,
+                gamepad_connected=self.input.gamepad_connected,
             )
 
         # Audio buttons are drawn last so they sit on top of every overlay
@@ -241,9 +245,9 @@ class Game:
             )
 
 
-async def main() -> None:
-    await Game().run()
+def main() -> None:
+    Game().run()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
