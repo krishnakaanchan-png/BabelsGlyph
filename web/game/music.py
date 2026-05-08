@@ -239,6 +239,19 @@ def _render_track() -> bytes:
         elif v < -32768:
             v = -32768
         out[i] = v
+
+    # ---- Loop-boundary click suppression -----------------------------
+    # The drone, pad release, and noise wash do not all return to exactly
+    # the same value at sample N-1 vs sample 0, which produces a hard
+    # step-click on every loop. We fade the first and last 200 ms with a
+    # cosine-shaped window so the boundary is silence-to-silence.
+    fade_n = int(0.20 * SR)              # 200 ms each side
+    if fade_n * 2 < N_TOTAL:
+        for i in range(fade_n):
+            # cosine ease: 0 at i=0, 1 at i=fade_n-1
+            k = 0.5 - 0.5 * math.cos(math.pi * i / (fade_n - 1))
+            out[i] = int(out[i] * k)
+            out[N_TOTAL - 1 - i] = int(out[N_TOTAL - 1 - i] * k)
     return out.tobytes()
 
 

@@ -421,12 +421,10 @@ class SfxBank:
 
     def set_muted(self, muted: bool) -> None:
         self.muted = bool(muted)
-        if self.muted:
-            try:
-                for snd, _ in self._sounds.values():
-                    snd.stop()
-            except Exception:
-                pass
+        # We deliberately do NOT call Sound.stop() here: cutting a sound
+        # mid-playback can produce a hard click on some drivers. The
+        # `muted` flag prevents NEW one-shots from starting; in-flight
+        # sounds finish their natural release within ~0.5 s.
 
     def toggle_muted(self) -> bool:
         self.set_muted(not self.muted)

@@ -49,6 +49,7 @@ class Game:
         # Player starts on the start chunk's ground floor (row 14 top).
         self.player = Player(120.0, 14 * 32 - 38)
         self._new_record_this_run = False
+        self._death_played = False
 
     def start_play(self) -> None:
         self._reset_world()
@@ -110,9 +111,13 @@ class Game:
             if run_m > self.highscore_m:
                 self.highscore_m = run_m
                 self._new_record_this_run = True
-                audio.get().play("record")
-            else:
-                audio.get().play("death")
+            # Play the death/record sting exactly ONCE per run.
+            if not self._death_played:
+                self._death_played = True
+                if self._new_record_this_run:
+                    audio.get().play("record")
+                else:
+                    audio.get().play("death")
 
         # Restart hotkey works mid-run.
         if self.input.restart_pressed:
