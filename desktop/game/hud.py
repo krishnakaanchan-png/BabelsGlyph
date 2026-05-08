@@ -143,39 +143,58 @@ class HUD:
             ht = self.font_xs.render(f"best  {int(highscore)} m", True, R.SAND_LIGHT)
             surf.blit(ht, (SCREEN_W - ht.get_width() - 12, 32))
 
-    def draw_title(self, surf, highscore=None):
+    def draw_title(self, surf, highscore=None, *, scores=None,
+                   player_name: str | None = None,
+                   board_status: str | None = None):
         s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         s.fill((0, 0, 0, 110))
         surf.blit(s, (0, 0))
         title = self.font_huge.render("BABEL'S GLYPH", True, R.GLYPH_GLOW)
-        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 90))
+        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 60))
         sub = self.font_md.render("An Endless Run Through Ancient Tech", True, R.BONE)
-        surf.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 158))
+        surf.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 120))
 
+        if player_name:
+            who = self.font_sm.render(f"Welcome, {player_name}    (P to change name)",
+                                      True, R.SAND_LIGHT)
+            surf.blit(who, (SCREEN_W // 2 - who.get_width() // 2, 144))
+
+        # Left column: controls / instructions.
         lines = [
-            "Outrun the collapsing past. Avoid hazards. Collect glyphs.",
+            "Outrun the collapsing past.",
+            "Avoid hazards. Collect glyphs.",
             "",
             "A / D    run / drift",
-            "Space    jump  (press again in air to double-jump)",
-            "Shift    dash (also kills automatons)",
+            "Space    jump (x2 in air)",
+            "Shift    dash (kills automatons)",
             "S        slide / crouch",
             "E        throw glyph-bomb",
-            "Press against a wall while falling to wall-slide; jump for wall-jump.",
+            "Wall-press while falling = wall-slide",
             "M / N    mute music / sfx",
+            "P        change player name",
             "",
             "Press SPACE to begin",
         ]
-        y = 200
+        y = 170
+        col_x = 60
         for ln in lines:
             t = self.font_sm.render(ln, True, R.BONE)
-            surf.blit(t, (SCREEN_W // 2 - t.get_width() // 2, y))
+            surf.blit(t, (col_x, y))
             y += 20
+
+        # Right column: leaderboard panel.
+        self.draw_leaderboard(
+            surf, scores or [], x=SCREEN_W - 360, y=170, width=320,
+            highlight_name=player_name, status=board_status,
+        )
 
         if highscore:
             ht = self.font_md.render(f"Best run: {int(highscore)} m", True, R.GLYPH_GLOW)
-            surf.blit(ht, (SCREEN_W // 2 - ht.get_width() // 2, y + 10))
+            surf.blit(ht, (SCREEN_W // 2 - ht.get_width() // 2, SCREEN_H - 60))
 
-    def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record):
+    def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record,
+                      *, scores=None, player_name: str | None = None,
+                      board_status: str | None = None):
         s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         s.fill((0, 0, 0, 170))
         surf.blit(s, (0, 0))
@@ -188,12 +207,116 @@ class HUD:
             f"Glyphs:    {glyphs}",
             f"Best:      {int(highscore)} m" + ("    NEW RECORD" if new_record else ""),
         ]
-        y = 230
+        y = 200
         for ln in stats:
             color = R.GLYPH_GLOW if ("NEW RECORD" in ln) else R.BONE
             t = self.font_md.render(ln, True, color)
             surf.blit(t, (SCREEN_W // 2 - t.get_width() // 2, y))
             y += 28
 
+        # Leaderboard centered below stats.
+        self.draw_leaderboard(
+            surf, scores or [], x=SCREEN_W // 2 - 200, y=y + 8, width=400,
+            highlight_name=player_name, status=board_status, max_rows=8,
+        )
+
         hint = self.font_md.render("Press R to restart   Esc to quit", True, R.BONE)
-        surf.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, y + 20))
+        surf.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 36))
+
+    # ------------------------------------------------------------------
+    # Leaderboard panel
+    # ------------------------------------------------------------------
+    def draw_leaderboard(self, surf, scores, *, x: int, y: int, width: int,
+                         highlight_name: str | None = None,
+                         status: str | None = None,
+                         max_rows: int = 10):
+        """Render a parchment-style top-N panel."""
+        title_h = 22
+        row_h = 18
+        rows = min(max_rows, max(1, len(scores))) if scores else 1
+        body_h = title_h + rows * row_h + 10
+        rect = pygame.Rect(x, y, width, body_h)
+
+        # Translucent backing.
+        bg = pygame.Surface(rect.size, pygame.SRCALPHA)
+        bg.fill((28, 22, 16, 190))
+        surf.blit(bg, rect.topleft)
+        pygame.draw.rect(surf, R.GLYPH_GLOW, rect, 1)
+
+        # Header.
+        head = self.font_md.render("Top Runs (Global)", True, R.GLYPH_GLOW)
+        surf.blit(head, (rect.x + 10, rect.y + 4))
+        if status:
+            stt = self.font_xs.render(status, True, R.SAND_LIGHT)
+            surf.blit(stt, (rect.right - stt.get_width() - 8, rect.y + 8))
+
+        if not scores:
+            empty = self.font_sm.render("No scores yet — be the first!", True, R.BONE)
+            surf.blit(empty, (rect.x + 10, rect.y + title_h + 4))
+            return
+
+        # Column layout: rank | name | distance | glyphs
+        rank_x  = rect.x + 10
+        name_x  = rect.x + 38
+        dist_x  = rect.right - 120
+        glyph_x = rect.right - 50
+
+        for i, s in enumerate(scores[:max_rows]):
+            row_y = rect.y + title_h + i * row_h
+            name = str(s.get("name", "?"))[:14]
+            dist = int(s.get("distance_m", 0))
+            glyphs = int(s.get("glyphs", 0))
+            is_me = (highlight_name and name == highlight_name)
+            color = R.GLYPH_GLOW if is_me else R.BONE
+            self._text(surf, self.font_sm, f"{i+1:>2}.",        (rank_x, row_y), color, shadow=False)
+            self._text(surf, self.font_sm, name,                (name_x, row_y), color, shadow=False)
+            d_text = f"{dist} m"
+            d_img = self.font_sm.render(d_text, True, color)
+            surf.blit(d_img, (dist_x + (60 - d_img.get_width()), row_y))
+            g_img = self.font_sm.render(f"{glyphs}*", True, color)
+            surf.blit(g_img, (glyph_x + (40 - g_img.get_width()), row_y))
+
+    # ------------------------------------------------------------------
+    # Name-entry overlay
+    # ------------------------------------------------------------------
+    def draw_name_entry(self, surf, *, current_text: str, blink_on: bool,
+                        max_len: int = 12):
+        """Full-screen prompt asking the player for their name."""
+        s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        s.fill((0, 0, 0, 200))
+        surf.blit(s, (0, 0))
+
+        title = self.font_huge.render("BABEL'S GLYPH", True, R.GLYPH_GLOW)
+        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 100))
+
+        sub = self.font_md.render(
+            "Carve your name into the leaderboard:", True, R.BONE
+        )
+        surf.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 200))
+
+        # Input box.
+        box_w, box_h = 360, 56
+        box = pygame.Rect(SCREEN_W // 2 - box_w // 2, 250, box_w, box_h)
+        bg = pygame.Surface(box.size, pygame.SRCALPHA)
+        bg.fill((28, 22, 16, 220))
+        surf.blit(bg, box.topleft)
+        pygame.draw.rect(surf, R.GLYPH_GLOW, box, 2)
+
+        display = current_text
+        if blink_on:
+            display += "_"
+        text = self.font_big.render(display, True, R.BONE)
+        surf.blit(text, (box.centerx - text.get_width() // 2,
+                         box.centery - text.get_height() // 2))
+
+        # Hints.
+        hint1 = self.font_sm.render(
+            f"Up to {max_len} letters. Backspace to erase. Enter to confirm.",
+            True, R.SAND_LIGHT,
+        )
+        surf.blit(hint1, (SCREEN_W // 2 - hint1.get_width() // 2, 320))
+        hint2 = self.font_xs.render(
+            "(Your scores are uploaded to a public global leaderboard.)",
+            True, R.STONE_LIGHT,
+        )
+        surf.blit(hint2, (SCREEN_W // 2 - hint2.get_width() // 2, 348))

@@ -11,9 +11,10 @@ from game.world import World
 from game.entities import EntityManager
 from game.chunks import Chunks
 from game.hud import HUD
-from game import particles, audio, music
+from game import particles, audio, music, profile, leaderboard
 
 
+NAME    = "name"
 TITLE   = "title"
 PLAYING = "playing"
 DEAD    = "dead"
@@ -31,14 +32,18 @@ class Game:
         audio.init()
         music.init()
         music.get().play()
+        leaderboard.init()
         pygame.display.set_caption("Babel's Glyph")
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock = pygame.time.Clock()
         self.input = Input()
         self.hud = HUD()
-        self.scene = TITLE
         self.highscore_m = 0.0
         self._reset_world()
+        if profile.has_name():
+            self.scene = TITLE
+        else:
+            self._enter_name_scene()
 
     def _reset_world(self) -> None:
         particles.reset()
@@ -49,10 +54,21 @@ class Game:
         self.player = Player(120.0, 14 * 32 - 38)
         self._new_record_this_run = False
         self._death_played = False
+        self._submitted_this_run = False
 
     def start_play(self) -> None:
         self._reset_world()
         self.scene = PLAYING
+
+    def _enter_name_scene(self) -> None:
+        self.scene = NAME
+        self.input.text_mode = True
+        self.input.reset_text(initial=profile.get_name() if profile.has_name() else "")
+
+    def _exit_name_scene(self) -> None:
+        self.input.text_mode = False
+        self.input.reset_text("")
+        self.scene = TITLE
 
     # ------------------------------------------------------------------
     def _handle_audio_toggles(self) -> None:
@@ -68,6 +84,14 @@ class Game:
             elif target == "sfx":
                 audio.get().toggle_muted()
 
+    def _update_name_entry(self) -> None:
+        if self.input.text_submit:
+            profile.set_name(self.input.text_buffer)
+            audio.get().play("glyph")
+            self._exit_name_scene()
+        elif self.input.text_cancel and profile.has_name():
+            self._exit_name_scene()
+
     # ------------------------------------------------------------------
     async def run(self) -> None:
         running = True
@@ -82,19 +106,24 @@ class Game:
                     running = False
                 self.input.handle_event(ev)
 
-            # Esc quits on desktop; in the browser, bounce back to title.
-            if self.input.quit_pressed:
+            # Esc handling is scene-dependent.
+            if self.scene != NAME and self.input.quit_pressed:
                 if sys.platform == "emscripten":
                     self.scene = TITLE
                 else:
                     running = False
 
-            # Audio mute toggles (work in any scene).
-            self._handle_audio_toggles()
+            # Audio mute toggles work in any non-text scene.
+            if self.scene != NAME:
+                self._handle_audio_toggles()
 
-            if self.scene == TITLE:
+            if self.scene == NAME:
+                self._update_name_entry()
+            elif self.scene == TITLE:
                 if self.input.start_pressed or self.input.restart_pressed:
                     self.start_play()
+                elif self.input.rename_pressed:
+                    self._enter_name_scene()
             elif self.scene == PLAYING:
                 self._update_play(dt)
             elif self.scene == DEAD:
@@ -128,6 +157,14 @@ class Game:
                     audio.get().play("record")
                 else:
                     audio.get().play("death")
+            # Submit to the global leaderboard exactly once per run.
+            if not self._submitted_this_run:
+                self._submitted_this_run = True
+                leaderboard.get().submit(
+                    profile.get_name(),
+                    int(run_m),
+                    int(self.player.glyphs),
+                )
 
         if self.input.restart_pressed:
             self.start_play()
@@ -140,8 +177,26 @@ class Game:
         self.player.draw(self.screen, self.world.camera_x)
         particles.get().draw(self.screen, self.world.camera_x)
 
-        if self.scene == TITLE:
-            self.hud.draw_title(self.screen, highscore=self.highscore_m if self.highscore_m else None)
+        board = leaderboard.get()
+        scores = board.top(10)
+        status = board.status()
+        pname = profile.get_name() if profile.has_name() else None
+
+        if self.scene == NAME:
+            blink_on = (pygame.time.get_ticks() // 500) % 2 == 0
+            self.hud.draw_name_entry(
+                self.screen,
+                current_text=self.input.text_buffer,
+                blink_on=blink_on,
+            )
+        elif self.scene == TITLE:
+            self.hud.draw_title(
+                self.screen,
+                highscore=self.highscore_m if self.highscore_m else None,
+                scores=scores,
+                player_name=pname,
+                board_status=status,
+            )
         elif self.scene == PLAYING:
             self.hud.draw_playing(
                 self.screen,
@@ -170,14 +225,19 @@ class Game:
                 glyphs=self.player.glyphs,
                 highscore=self.highscore_m,
                 new_record=self._new_record_this_run,
+                scores=scores,
+                player_name=pname,
+                board_status=status,
             )
 
-        # Audio buttons are drawn last so they sit on top of every overlay.
-        self.hud.draw_audio_buttons(
-            self.screen,
-            music_muted=music.get().muted,
-            sfx_muted=audio.get().muted,
-        )
+        # Audio buttons are drawn last so they sit on top of every overlay
+        # (but not on the name-entry screen, where they'd be confusing).
+        if self.scene != NAME:
+            self.hud.draw_audio_buttons(
+                self.screen,
+                music_muted=music.get().muted,
+                sfx_muted=audio.get().muted,
+            )
 
 
 async def main() -> None:
