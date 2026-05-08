@@ -161,36 +161,49 @@ class HUD:
             surf.blit(who, (SCREEN_W // 2 - who.get_width() // 2, 144))
 
         # Left column: controls / instructions.
-        lines = [
-            "Outrun the collapsing past.",
-            "Avoid hazards. Collect glyphs.",
-            "",
-            "A / D    run / drift",
-            "Space    jump (x2 in air)",
-            "Shift    dash (kills automatons)",
-            "S        slide / crouch",
-            "E        throw glyph-bomb",
-            "Wall-press while falling = wall-slide",
-            "M / N    mute music / sfx",
-            "P        change player name",
+        # Gamepad hints are always shown so players know controller
+        # support exists; the 'detected' tag flips to live when a pad is
+        # actually plugged in. We render keyboard and controller as two
+        # side-by-side mini-columns so neither runs into the leaderboard
+        # panel on the right.
+        pad_status = "(detected)" if gamepad_connected else "(plug in to use)"
+        kb_lines = [
+            ("Keyboard",                  R.GLYPH_GLOW),
+            ("A / D       run / drift",   R.BONE),
+            ("Space       jump (x2)",     R.BONE),
+            ("Shift       dash",          R.BONE),
+            ("S           slide",         R.BONE),
+            ("E           glyph-bomb",    R.BONE),
+            ("M / N       mute mus/sfx",  R.BONE),
+            ("P           change name",   R.BONE),
         ]
-        if gamepad_connected:
-            lines += [
-                "",
-                "Gamepad: Stick/D-pad move,  A jump,",
-                "X bomb,  LB/RB or trigger dash,",
-                "Start to begin / restart",
-            ]
-        lines += [
-            "",
-            "Press SPACE to begin" + ("  (or A)" if gamepad_connected else ""),
+        pad_lines = [
+            (f"Xbox Pad {pad_status}",    R.GLYPH_GLOW),
+            ("Stick / Pad    move",       R.BONE),
+            ("A              jump",       R.BONE),
+            ("LB/RB or LT/RT dash",       R.BONE),
+            ("Stick down     slide",      R.BONE),
+            ("X              glyph-bomb", R.BONE),
+            ("Y / Back       mute m/sfx", R.BONE),
+            ("Start          begin",      R.BONE),
         ]
-        y = 170
-        col_x = 60
-        for ln in lines:
-            t = self.font_sm.render(ln, True, R.BONE)
-            surf.blit(t, (col_x, y))
-            y += 20
+
+        intro = self.font_sm.render(
+            "Outrun the collapsing past.  Avoid hazards.  Collect glyphs.",
+            True, R.BONE,
+        )
+        surf.blit(intro, (60, 170))
+
+        kb_x, pad_x, list_y = 60, 300, 200
+        for i, (text, col) in enumerate(kb_lines):
+            t = self.font_sm.render(text, True, col)
+            surf.blit(t, (kb_x, list_y + i * 20))
+        for i, (text, col) in enumerate(pad_lines):
+            t = self.font_sm.render(text, True, col)
+            surf.blit(t, (pad_x, list_y + i * 20))
+
+        cta = self.font_md.render("Press SPACE or A to begin", True, R.GLYPH_GLOW)
+        surf.blit(cta, (60, list_y + len(kb_lines) * 20 + 14))
 
         # Right column: leaderboard panel.
         self.draw_leaderboard(
@@ -232,8 +245,7 @@ class HUD:
         )
 
         hint = self.font_md.render(
-            "Press R to restart   Esc to quit"
-            + ("    (Pad: A or Start = restart)" if gamepad_connected else ""),
+            "Press R or A to restart   Esc to quit",
             True, R.BONE,
         )
         surf.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 36))

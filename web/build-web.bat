@@ -11,7 +11,10 @@ if not exist "%VENV_PY%" (
     "%VENV_PY%" -m pip install pygame-ce pygbag
 )
 
-if exist build\web rmdir /s /q build\web
+REM Wipe the entire build/ tree (not just build\web) so pygbag re-creates
+REM build\web from scratch. Keeping build\web-cache around triggered a
+REM 'No such file or directory: build/web/web.apk' on the second run.
+if exist build rmdir /s /q build
 "%VENV_PY%" -m pygbag --build .
 
 echo.
