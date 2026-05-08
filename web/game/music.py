@@ -299,17 +299,26 @@ class MusicPlayer:
         OGG is preferred (smaller and lossless-quality at the bitrate we
         ship) and falls back to WAV if for some reason OGG isn't there.
         """
-        # Search both the current working directory (where pygbag and
-        # PyInstaller drop the ``assets`` folder) and the package's
-        # repo-relative location.
+        # Search the current working directory (where pygbag and the
+        # PyInstaller bundle drop the ``assets`` folder) AND the package's
+        # repo-relative location AND, when frozen, the location next to
+        # the executable plus the ``_MEIPASS`` PyInstaller temp dir.
         here = Path(__file__).resolve().parent.parent
         cwd = Path.cwd()
-        roots = [
+        roots: list[Path] = [
             cwd / "assets",
             here / "assets",
             here / "desktop" / "assets",
             here / "web" / "assets",
         ]
+        # PyInstaller --onedir lays files out next to the .exe; --onefile
+        # extracts to sys._MEIPASS. Cover both.
+        if getattr(sys, "frozen", False):
+            exe_dir = Path(sys.executable).resolve().parent
+            roots.append(exe_dir / "assets")
+            mei = getattr(sys, "_MEIPASS", None)
+            if mei:
+                roots.append(Path(mei) / "assets")
         names = ["music.ogg", "music.wav"]
         return [r / n for r in roots for n in names]
 
