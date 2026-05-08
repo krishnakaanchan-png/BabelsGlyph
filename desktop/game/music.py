@@ -294,18 +294,24 @@ class MusicPlayer:
         self._volume = 0.30
 
     def _candidate_paths(self) -> list[Path]:
-        """All places we might find the pre-rendered music file."""
+        """All places we might find the pre-rendered music file.
+
+        OGG is preferred (smaller and lossless-quality at the bitrate we
+        ship) and falls back to WAV if for some reason OGG isn't there.
+        """
         # Search both the current working directory (where pygbag and
         # PyInstaller drop the ``assets`` folder) and the package's
         # repo-relative location.
         here = Path(__file__).resolve().parent.parent
         cwd = Path.cwd()
-        return [
-            cwd / "assets" / "music.wav",
-            here / "assets" / "music.wav",
-            here / "desktop" / "assets" / "music.wav",
-            here / "web" / "assets" / "music.wav",
+        roots = [
+            cwd / "assets",
+            here / "assets",
+            here / "desktop" / "assets",
+            here / "web" / "assets",
         ]
+        names = ["music.ogg", "music.wav"]
+        return [r / n for r in roots for n in names]
 
     def init(self) -> None:
         try:
