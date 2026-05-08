@@ -11,7 +11,7 @@ from game.world import World
 from game.entities import EntityManager
 from game.chunks import Chunks
 from game.hud import HUD
-from game import particles, audio
+from game import particles, audio, music
 
 
 TITLE   = "title"
@@ -23,8 +23,14 @@ PIXELS_PER_METER = 50.0
 
 class Game:
     def __init__(self) -> None:
+        # Lock the mixer to a known format BEFORE pygame.init() so the SFX
+        # and music buffers (synthesised at 22050 Hz mono) play at the
+        # right pitch on every platform.
+        pygame.mixer.pre_init(22050, -16, 1, 512)
         pygame.init()
         audio.init()
+        music.init()
+        music.get().play()
         pygame.display.set_caption("Babel's Glyph")
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock = pygame.time.Clock()
