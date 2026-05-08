@@ -55,6 +55,20 @@ class Game:
         self.scene = PLAYING
 
     # ------------------------------------------------------------------
+    def _handle_audio_toggles(self) -> None:
+        """M = music mute, N = SFX mute, mouse = click HUD icons."""
+        if self.input.mute_music_pressed:
+            music.get().toggle_muted()
+        if self.input.mute_sfx_pressed:
+            audio.get().toggle_muted()
+        if self.input.click_xy is not None:
+            target = self.hud.hit_test_audio_buttons(self.input.click_xy)
+            if target == "music":
+                music.get().toggle_muted()
+            elif target == "sfx":
+                audio.get().toggle_muted()
+
+    # ------------------------------------------------------------------
     def run(self) -> None:
         while True:
             dt = self.clock.tick(TARGET_FPS) / 1000.0
@@ -68,6 +82,9 @@ class Game:
             if self.input.quit_pressed:
                 pygame.quit()
                 sys.exit(0)
+
+            # Audio mute toggles (work in any scene).
+            self._handle_audio_toggles()
 
             if self.scene == TITLE:
                 if self.input.start_pressed or self.input.restart_pressed:
@@ -87,7 +104,6 @@ class Game:
         self.player.update(dt, self.input, self.world, self.entities)
         self.entities.update_all(dt, self.world, self.player)
         particles.get().update(dt)
-
         if not self.player.alive:
             self.scene = DEAD
             run_m = self.world.distance / PIXELS_PER_METER
@@ -141,6 +157,13 @@ class Game:
                 highscore=self.highscore_m,
                 new_record=self._new_record_this_run,
             )
+
+        # Audio buttons are drawn last so they sit on top of every overlay.
+        self.hud.draw_audio_buttons(
+            self.screen,
+            music_muted=music.get().muted,
+            sfx_muted=audio.get().muted,
+        )
 
 
 def main() -> None:

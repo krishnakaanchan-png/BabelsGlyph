@@ -251,6 +251,7 @@ class MusicPlayer:
 
     def __init__(self) -> None:
         self.enabled = False
+        self.muted = False
         self._channel: Optional["pygame.mixer.Channel"] = None
         self._sound: Optional["pygame.mixer.Sound"] = None
         self._volume = 0.45
@@ -279,7 +280,9 @@ class MusicPlayer:
             self.enabled = False
 
     def play(self, fade_ms: int = 2000) -> None:
-        if not self.enabled or self._sound is None or self._channel is None:
+        if not self.enabled or self.muted:
+            return
+        if self._sound is None or self._channel is None:
             return
         if self._channel.get_busy():
             return
@@ -298,6 +301,24 @@ class MusicPlayer:
                 self._channel.set_volume(self._volume)
             except Exception:
                 pass
+
+    def set_muted(self, muted: bool) -> None:
+        self.muted = bool(muted)
+        if not self.enabled or self._channel is None:
+            return
+        if self.muted:
+            # Soft fade so the toggle itself never clicks.
+            try:
+                self._channel.fadeout(220)
+            except Exception:
+                pass
+        else:
+            # Resume from start of loop with a gentle fade-in.
+            self.play(fade_ms=600)
+
+    def toggle_muted(self) -> bool:
+        self.set_muted(not self.muted)
+        return self.muted
 
 
 _INSTANCE: Optional[MusicPlayer] = None
