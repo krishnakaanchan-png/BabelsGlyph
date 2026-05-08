@@ -6,6 +6,7 @@ import pygame
 from .constants import TILE, SCREEN_W, SCREEN_H, START_HP, MAX_HP
 from . import render as R
 from . import particles
+from . import audio as A
 
 
 # Tunables.
@@ -110,6 +111,7 @@ class Player:
             return
         self.hp -= 1
         self._invuln = INVULN_AFTER_HIT
+        A.get().play("hit")
         # Knock-back upward and away.
         self.vy = -260.0
         self.vx = -120.0 * (1 if self.facing > 0 else -1)
@@ -124,6 +126,7 @@ class Player:
         """Stomp bounce."""
         self.vy = -360.0
         self._jumps_left = 1   # refund air jump after stomp
+        A.get().play("stomp")
 
     def apply_steam_boost(self) -> None:
         # Continuous upward boost while inside the column.
@@ -137,6 +140,7 @@ class Player:
         self.vx += vx_boost
         self._jumps_left = 1   # refund a jump after catapult
         self._dash_used_in_air = False
+        A.get().play("catapult")
 
     # ------------------------------------------------------------------
     def update(self, dt: float, inp, world, em) -> None:
@@ -162,6 +166,7 @@ class Player:
             self.y += STAND_H - SLIDE_H
             # Slide forward boost.
             self.vx = (SLIDE_BOOST if self.facing > 0 else -SLIDE_BOOST)
+            A.get().play("slide")
         if self._sliding:
             self._slide_t -= dt
             # Forced exit if timer expires or down released, but only if standing room available.
@@ -207,6 +212,7 @@ class Player:
                 if not self.on_ground:
                     self._dash_used_in_air = True
                 self.vy = 0.0  # cancel vertical
+                A.get().play("dash")
                 # If sliding, end it.
                 if self._sliding and self._can_stand(world):
                     self._end_slide()
@@ -240,6 +246,7 @@ class Player:
                 self._coyote = 0
                 self._jump_buf = 0
                 self.on_ground = False
+                A.get().play("jump")
             elif self.on_wall_dir != 0:
                 # Wall jump.
                 self.vy = WALL_JUMP_VY
@@ -250,11 +257,13 @@ class Player:
                 self._jump_buf = 0
                 self._jumps_left = 1   # allow one air jump after wall-jump
                 self._dash_used_in_air = False
+                A.get().play("wall_jump")
             elif self._jumps_left > 0:
                 # Double / air jump.
                 self.vy = JUMP_VELOCITY * 0.92
                 self._jumps_left -= 1
                 self._jump_buf = 0
+                A.get().play("double_jump")
         else:
             self._jump_buf = max(0.0, self._jump_buf - dt)
 
@@ -269,6 +278,7 @@ class Player:
             cx = self.x + self.w / 2
             cy = self.y + self.h / 3
             em.add(GlyphBomb(cx, cy, BOMB_VX * self.facing, BOMB_VY))
+            A.get().play("bomb_throw")
 
         # ---- Move & collide ----
         self._move_and_collide(dt, world, em)
@@ -278,6 +288,7 @@ class Player:
             ps = particles.get()
             intensity = min(1.6, self._fall_vy / 600.0)
             ps.burst_landing(self.x + self.w / 2, self.y + self.h, intensity)
+            A.get().play("land_hard" if intensity > 0.7 else "land_soft")
             self._fall_vy = 0.0
         elif self.on_ground:
             self._fall_vy = 0.0

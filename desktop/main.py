@@ -10,7 +10,7 @@ from game.world import World
 from game.entities import EntityManager
 from game.chunks import Chunks
 from game.hud import HUD
-from game import particles
+from game import particles, audio
 
 
 TITLE   = "title"
@@ -24,6 +24,7 @@ PIXELS_PER_METER = 50.0
 class Game:
     def __init__(self) -> None:
         pygame.init()
+        audio.init()
         pygame.display.set_caption("Babel's Glyph")
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock = pygame.time.Clock()
@@ -87,6 +88,9 @@ class Game:
             if run_m > self.highscore_m:
                 self.highscore_m = run_m
                 self._new_record_this_run = True
+                audio.get().play("record")
+            else:
+                audio.get().play("death")
 
         # Restart hotkey works mid-run.
         if self.input.restart_pressed:

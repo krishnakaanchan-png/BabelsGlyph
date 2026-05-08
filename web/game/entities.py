@@ -7,6 +7,7 @@ import pygame
 from .constants import TILE, SCREEN_W, SCREEN_H, GRID_ROWS
 from . import render as R
 from . import particles
+from . import audio as A
 
 
 # ---------------------------------------------------------------------
@@ -78,6 +79,7 @@ class GlyphPickup(Entity):
         if self.alive and self.rect.colliderect(player.rect):
             self.alive = False
             player.collect_glyph(1)
+            A.get().play("glyph_pickup")
             ps = particles.get()
             ps.burst_sparks(self.x, self.y, color=R.GLYPH_GLOW_S, n=10, speed=180, life=0.4)
 
@@ -114,6 +116,7 @@ class HeartPickup(Entity):
         if self.alive and self.rect.colliderect(player.rect):
             self.alive = False
             player.heal(1)
+            A.get().play("heart_pickup")
             ps = particles.get()
             ps.burst_sparks(self.x, self.y, color=R.HEART_RED, n=12, speed=180, life=0.5)
 
@@ -580,6 +583,7 @@ class GlyphBomb(Entity):
 
     def _explode(self, world, em):
         self.alive = False
+        A.get().play("explode")
         em.add(Explosion(self.x, self.y))
         particles.get().burst_explosion(self.x, self.y)
         for e in em.entities:
