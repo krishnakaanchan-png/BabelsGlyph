@@ -164,12 +164,21 @@ def _render_track() -> bytes:
 
     # ---- Layer 1: Deep stone-temple drone (perfect-fifth pedal) -------
     # Low A (110 Hz) + E (165 Hz) + sub-A (55 Hz). Slow sub-Hz vibrato so
-    # the drone breathes without ever feeling pitched.
+    # the drone breathes without ever feeling pitched. The drone is
+    # enveloped with a long attack/release so it fades in with the pad
+    # at the start of the loop and back to silence at the end - this is
+    # what stops it from sounding like a constant background hum on the
+    # death / pause screen where everything else is quiet.
+    drone_attack = int(3.0 * SR)
+    drone_release = int(3.0 * SR)
     _add_sine(buf, 110.0, 4500, 0, N_TOTAL,
+              n_attack=drone_attack, n_release=drone_release,
               vib_freq=0.13, vib_depth=14)
     _add_sine(buf, 165.0, 2800, 0, N_TOTAL,
+              n_attack=drone_attack, n_release=drone_release,
               vib_freq=0.09, vib_depth=10)
-    _add_sine(buf, 55.0, 2400, 0, N_TOTAL)
+    _add_sine(buf, 55.0, 2400, 0, N_TOTAL,
+              n_attack=drone_attack, n_release=drone_release)
 
     # ---- Layer 2: Modal chord pad — 4 chords × 6 sec each --------------
     # A natural-minor extensions: i7  →  VImaj7  →  IIImaj7  →  v7
@@ -215,8 +224,11 @@ def _render_track() -> bytes:
         _add_pluck(buf, freq, amp, n_start, decay_sec=2.6)
         t += rng.uniform(2.7, 5.0)
 
-    # ---- Layer 4: Wind through ruins ---------------------------------
-    _add_noise(buf, 1100, 0, N_TOTAL, lp_alpha=0.04, mod_freq=0.07)
+    # NOTE: a filtered-noise "wind" layer used to live here. It produced
+    # an audible constant hiss/rumble on the death/pause screen where
+    # nothing else masks it (the loop's quietest 200 ms window measured
+    # ~ -14 dB RMS instead of true silence). Removed in favour of a fully
+    # tonal mix that fades cleanly to silence at the loop boundary.
 
     # ---- Master: soft tanh + int16 conversion ------------------------
     out = array.array("h", [0] * N_TOTAL)
