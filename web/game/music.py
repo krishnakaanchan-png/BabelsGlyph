@@ -1,24 +1,34 @@
 """Procedural ambient music for Babel's Glyph.
 
 Theme: 'ancient tech' — a soothing modal pad over a deep stone-temple
-drone, with sparse crystalline glyph bells. Synthesized at startup
-using only the standard library (math, array, random) so the bundle
-stays small and the web (pygbag) build needs no asset files.
+drone, with sparse crystalline glyph bells.
+
+The loop is pre-rendered offline by ``tools/render_music.py`` and shipped
+as ``assets/music.wav``. At runtime we just load that file - we no longer
+synthesize the track at game start, which avoids:
+    * the ~half-second startup CPU spike,
+    * any per-launch variation, and
+    * the mixer underrun / crackle some Windows drivers exhibit when
+      the synth is racing the audio buffer at startup.
+
+The synthesis routines below are still present so the renderer tool
+can call them; if ``assets/music.wav`` is missing for any reason, the
+runtime falls back to synthesizing in place (with a warning).
 
 Public API:
     music.init()           # call once after pygame is imported
     music.get().play()     # start looping with fade-in
     music.get().stop()     # fade-out
     music.get().set_volume(0.0..1.0)
-
-If pygame.mixer cannot be initialized, the player becomes a silent
-no-op and the game still runs.
 """
 from __future__ import annotations
 
 import array
 import math
+import os
 import random
+import sys
+from pathlib import Path
 from typing import Optional
 
 import pygame
@@ -279,12 +289,30 @@ class MusicPlayer:
         self.muted = False
         self._channel: Optional["pygame.mixer.Channel"] = None
         self._sound: Optional["pygame.mixer.Sound"] = None
-        self._volume = 0.45
+        # Keep music ~12 dB below SFX so anything residual on the pause
+        # screen sits well below voice / FX cues.
+        self._volume = 0.30
+
+    def _candidate_paths(self) -> list[Path]:
+        """All places we might find the pre-rendered music file."""
+        # Search both the current working directory (where pygbag and
+        # PyInstaller drop the ``assets`` folder) and the package's
+        # repo-relative location.
+        here = Path(__file__).resolve().parent.parent
+        cwd = Path.cwd()
+        return [
+            cwd / "assets" / "music.wav",
+            here / "assets" / "music.wav",
+            here / "desktop" / "assets" / "music.wav",
+            here / "web" / "assets" / "music.wav",
+        ]
 
     def init(self) -> None:
         try:
             if not pygame.mixer.get_init():
-                pygame.mixer.init(SR, -16, 1, 512)
+                # Larger buffer (1024 vs 512) to eliminate underrun crackle on
+                # idle screens (pause / death / title).
+                pygame.mixer.init(SR, -16, 1, 1024)
         except pygame.error:
             self.enabled = False
             return
@@ -297,12 +325,32 @@ class MusicPlayer:
         except Exception:
             self.enabled = False
             return
-        try:
-            data = _render_track()
-            self._sound = pygame.mixer.Sound(buffer=data)
-            self.enabled = True
-        except Exception:
-            self.enabled = False
+
+        # Prefer the pre-rendered WAV that ships in assets/. Only fall
+        # back to runtime synthesis if no file is found - that path is
+        # mainly there to keep the renderer tool working without a
+        # chicken-and-egg dependency on its own output.
+        loaded = False
+        for path in self._candidate_paths():
+            if path.exists():
+                try:
+                    self._sound = pygame.mixer.Sound(str(path))
+                    loaded = True
+                    break
+                except pygame.error:
+                    continue
+        if not loaded:
+            try:
+                print("music: assets/music.wav not found; synthesizing fallback "
+                      "(run tools/render_music.py to pre-render).",
+                      file=sys.stderr)
+                data = _render_track()
+                self._sound = pygame.mixer.Sound(buffer=data)
+                loaded = True
+            except Exception:
+                self.enabled = False
+                return
+        self.enabled = bool(loaded)
 
     def play(self, fade_ms: int = 2000) -> None:
         if not self.enabled or self.muted:
