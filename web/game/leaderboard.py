@@ -6,8 +6,12 @@ Architecture:
     on next launch (and stays usable offline).
   * Network I/O happens off the game loop:
       - Desktop: background ``threading.Thread`` using ``urllib.request``.
-      - Web (pygbag/emscripten): ``asyncio`` task using ``pyodide.http.pyfetch``
-        when available, falling back to ``urllib.request``.
+      - Web (pygbag/emscripten): ``asyncio`` task that calls JavaScript
+        ``fetch`` via a tiny JS-side helper installed at import time. We
+        deliberately avoid ``pyodide.http`` (not bundled with pygbag), the
+        urllib monkey-patch (routes through a non-existent WebSocket bridge
+        and fails for arbitrary public APIs), and direct ``await js.fetch(...)``
+        (its returned Promise has no asyncio loop binding in pygbag's CPython).
   * Submits are GET-modify-PUT with conditional ``If-Match`` on the ETag and
     one retry on conflict. The local cache is updated optimistically so the
     player sees their name immediately.
@@ -70,31 +74,87 @@ def _sync_request(method: str, url: str, body: bytes | None = None,
         return e.code, text, None
 
 
+# Pygbag's CPython does not ship `pyodide.http`, and `js.fetch` returns a
+# Promise that asyncio cannot await directly (`'browser.PromiseWrapper' has
+# no attribute '_loop'`). The supported pattern in pygbag is the one used by
+# `platform.window.cross_file`: call JS `fetch`, drive the returned Promise
+# via a JS generator that yields until resolution, and consume that generator
+# with `platform.jsiter` (a true asyncio-friendly coroutine helper). We
+# install our own helper once, then call it for both GET and PUT.
+_WEB_HELPER_INSTALLED = False
+_WEB_HELPER_NAME = "bg_leaderboard_fetch"
+_WEB_HELPER_JS = """
+window.""" + _WEB_HELPER_NAME + """ = function(url, init) {
+    var done = null;
+    var error = null;
+    var result = null;
+    fetch(url, init || {})
+        .then(function(resp) {
+            result = { status: resp.status,
+                       etag: resp.headers.get('ETag') };
+            return resp.text();
+        })
+        .then(function(text) { result.text = text; done = true; })
+        .catch(function(e) { error = String(e); done = true; });
+    return (function*() {
+        while (!done) yield null;
+        if (error) throw new Error(error);
+        yield result;
+    })();
+};
+"""
+
+
+def _ensure_web_helper() -> None:
+    global _WEB_HELPER_INSTALLED
+    if _WEB_HELPER_INSTALLED:
+        return
+    import platform  # type: ignore - pygbag's emscripten platform module
+    platform.eval(_WEB_HELPER_JS)
+    _WEB_HELPER_INSTALLED = True
+
+
 async def _async_request(method: str, url: str, body: bytes | None = None,
                          if_match: str | None = None) -> tuple[int, str, str | None]:
-    """Async HTTP for the web build (uses pyodide.http.pyfetch when possible)."""
-    try:
-        from pyodide.http import pyfetch  # type: ignore
-    except ImportError:
-        # Last-resort fallback: blocking urllib (will stutter the frame).
-        return _sync_request(method, url, body=body, if_match=if_match)
+    """Async HTTP for the web build via JavaScript ``fetch``."""
+    import platform  # type: ignore
+    import json as _json
+    _ensure_web_helper()
 
     headers: dict[str, str] = {}
     if body is not None:
         headers["Content-Type"] = "application/json"
     if if_match:
         headers["If-Match"] = if_match
-    kwargs: dict = {"method": method, "headers": headers}
+
+    init_dict: dict = {"method": method}
+    if headers:
+        init_dict["headers"] = headers
     if body is not None:
-        kwargs["body"] = body
-    resp = await pyfetch(url, **kwargs)
-    text = await resp.string()
-    etag = None
-    try:
-        etag = resp.js_response.headers.get("etag")
-    except Exception:
-        pass
-    return resp.status, text, etag
+        init_dict["body"] = (
+            body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body
+        )
+
+    # Convert the Python dict to a real JS object via JSON round-trip; this
+    # avoids pygbag's "object of type 'list' cannot be converted" errors that
+    # happen when a Python dict containing nested dicts is passed straight to
+    # a JS function.
+    if init_dict:
+        init_js = platform.window.JSON.parse(_json.dumps(init_dict))
+    else:
+        init_js = None
+
+    helper = getattr(platform.window, _WEB_HELPER_NAME)
+    gen = helper(url, init_js)
+    result = await platform.jsiter(gen)
+    if result is None:
+        return 0, "", None
+    status = int(result.status)
+    text = str(result.text) if result.text is not None else ""
+    etag = result.etag
+    if etag is not None:
+        etag = str(etag)
+    return status, text, etag
 
 
 # ----------------------------------------------------------------------
