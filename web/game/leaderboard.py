@@ -419,8 +419,23 @@ class Leaderboard:
                 "glyphs": int(s.get("glyphs", 0) or 0),
                 "ts": int(s.get("ts", 0) or 0),
             })
-        valid.sort(key=lambda s: (-s["distance_m"], -s["ts"]))
-        return valid[:TOP_N]
+        # Keep only each player's personal best. We compare names
+        # case-insensitively after trimming so "kk", "KK" and " kk "
+        # all collapse onto the same row. Tie-breaker on equal distance:
+        # the more recent timestamp wins (so the leaderboard reflects
+        # the player's latest matching record).
+        best_by_name: dict[str, dict] = {}
+        for s in valid:
+            key = s["name"].casefold()
+            cur = best_by_name.get(key)
+            if (cur is None
+                    or s["distance_m"] > cur["distance_m"]
+                    or (s["distance_m"] == cur["distance_m"]
+                        and s["ts"] > cur["ts"])):
+                best_by_name[key] = s
+        deduped = list(best_by_name.values())
+        deduped.sort(key=lambda s: (-s["distance_m"], -s["ts"]))
+        return deduped[:TOP_N]
 
     @staticmethod
     def _merge(a: list[dict], b: list[dict]) -> list[dict]:
