@@ -1,4 +1,5 @@
 """Shared constants for the endless runner."""
+import sys
 
 TILE         = 32
 SCREEN_W     = 960
@@ -6,6 +7,19 @@ SCREEN_H     = 544          # 17 tiles tall (kept multiple of TILE)
 GRID_COLS    = SCREEN_W // TILE   # 30
 GRID_ROWS    = SCREEN_H // TILE   # 17
 TARGET_FPS   = 60
+
+# --- Display scaling --------------------------------------------------
+# All gameplay code keeps drawing into a logical SCREEN_W x SCREEN_H
+# surface so chunk geometry, hitboxes and font sizes are unchanged. The
+# operating-system window opens at WINDOW_W x WINDOW_H and the logical
+# frame is bilinearly upscaled each frame. On the web build we keep the
+# window at 1x because pygbag's emscripten canvas is browser-sized and
+# upscaling there would just resample twice (once by us, once by the
+# browser's CSS scaling).
+RENDER_SCALE = 1 if sys.platform == "emscripten" else 2
+WINDOW_W     = SCREEN_W * RENDER_SCALE
+WINDOW_H     = SCREEN_H * RENDER_SCALE
+
 
 # Auto-scroll: pixels per second.
 SCROLL_BASE  = 90.0

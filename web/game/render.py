@@ -1,7 +1,10 @@
 """Color palette, draw helpers, PyInstaller-safe resource path."""
 from __future__ import annotations
+import math
 import os
 import sys
+
+import pygame
 
 # Ancient palette.
 SANDSTONE     = (216, 179, 117)
@@ -49,3 +52,70 @@ def lerp_color(a, b, t: float):
     return (int(a[0] + (b[0] - a[0]) * t),
             int(a[1] + (b[1] - a[1]) * t),
             int(a[2] + (b[2] - a[2]) * t))
+
+
+# ============================================================================
+# Post-processing helpers (bloom + vignette).
+#
+# Both helpers operate on the logical render surface so their cost scales
+# with SCREEN_W x SCREEN_H, NOT with the actual window size. They look
+# identical regardless of RENDER_SCALE because they run before the final
+# upscale to the OS window.
+# ============================================================================
+
+def make_vignette(w: int, h: int,
+                  *, strength: int = 170, falloff: float = 2.2) -> pygame.Surface:
+    """Build a radial corner-darkening overlay (call once at startup).
+
+    Internally we paint a tiny 96x96 alpha gradient and let smoothscale do
+    the heavy lifting; per-pixel set_at on the full-size surface would be
+    too slow on the web build.
+    """
+    small_n = 96
+    g = pygame.Surface((small_n, small_n), pygame.SRCALPHA)
+    cx = (small_n - 1) / 2.0
+    cy = (small_n - 1) / 2.0
+    max_d = math.hypot(cx, cy)
+    for y in range(small_n):
+        for x in range(small_n):
+            d = math.hypot(x - cx, y - cy) / max_d
+            a = int(min(255, max(0, (d ** falloff) * strength)))
+            g.set_at((x, y), (0, 0, 0, a))
+    return pygame.transform.smoothscale(g, (w, h))
+
+
+def apply_bloom(frame: pygame.Surface, *,
+                downsample: int = 4, blur_radius: int = 6,
+                intensity: int = 70) -> None:
+    """Add a soft bloom glow in-place on `frame`.
+
+    Pipeline: downsample -> box-blur -> pre-multiply by intensity ->
+    upscale -> additively composite back onto `frame`. Because the source
+    is multiplied by intensity/255 before the additive blend, bright
+    pixels (glyphs, charge, embers) gain a visible halo while dark pixels
+    contribute almost nothing - that's the look we want.
+
+    Cost is proportional to (frame_size / downsample**2). With the
+    defaults below at 960x544 / down=4, the blurred buffer is 240x136
+    which is essentially free on modern CPUs and on emscripten.
+    """
+    if intensity <= 0:
+        return
+    w, h = frame.get_size()
+    sw = max(1, w // downsample)
+    sh = max(1, h // downsample)
+    small = pygame.transform.smoothscale(frame, (sw, sh))
+    # box_blur was added in pygame-ce 2.4; available in pygbag 0.9.3.
+    try:
+        blurred = pygame.transform.box_blur(small, blur_radius)
+    except (AttributeError, ValueError):
+        # Cheap fallback: smoothscale-down then up to fake a blur.
+        tiny = pygame.transform.smoothscale(small, (max(1, sw // 2), max(1, sh // 2)))
+        blurred = pygame.transform.smoothscale(tiny, (sw, sh))
+    # Pre-multiply the blur by `intensity / 255` so additive composition
+    # adds at most `intensity` to any given channel.
+    mul = pygame.Surface(blurred.get_size()).convert()
+    mul.fill((intensity, intensity, intensity))
+    blurred.blit(mul, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
+    up = pygame.transform.smoothscale(blurred, (w, h))
+    frame.blit(up, (0, 0), special_flags=pygame.BLEND_RGB_ADD)

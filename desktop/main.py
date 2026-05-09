@@ -3,14 +3,16 @@ from __future__ import annotations
 import sys
 import pygame
 
-from game.constants import SCREEN_W, SCREEN_H, TARGET_FPS
+from game.constants import (
+    SCREEN_W, SCREEN_H, WINDOW_W, WINDOW_H, RENDER_SCALE, TARGET_FPS,
+)
 from game.input import Input
 from game.player import Player
 from game.world import World
 from game.entities import EntityManager
 from game.chunks import Chunks
 from game.hud import HUD
-from game import particles, audio, music, profile, leaderboard
+from game import particles, audio, music, profile, leaderboard, render as R
 
 
 NAME    = "name"
@@ -35,9 +37,15 @@ class Game:
         music.get().play()
         leaderboard.init()
         pygame.display.set_caption("Babel's Glyph")
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        # Open the OS window at the upscaled resolution, but keep all
+        # gameplay drawing in a logical SCREEN_W x SCREEN_H surface.
+        # Each frame the logical surface is bilinearly upscaled to the
+        # window, with bloom + vignette applied beforehand.
+        self.window = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+        self.screen = pygame.Surface((SCREEN_W, SCREEN_H)).convert()
+        self._vignette = R.make_vignette(SCREEN_W, SCREEN_H)
         self.clock = pygame.time.Clock()
-        self.input = Input()
+        self.input = Input(render_scale=RENDER_SCALE)
         self.hud = HUD()
         self.highscore_m = 0.0
         self._submitted_this_run = False
@@ -126,7 +134,17 @@ class Game:
                     self.start_play()
 
             self._render()
-            pygame.display.flip()
+            self._present()
+
+    def _present(self) -> None:
+        """Bilinearly upscale the logical screen to the OS window."""
+        if RENDER_SCALE == 1:
+            self.window.blit(self.screen, (0, 0))
+        else:
+            pygame.transform.smoothscale(
+                self.screen, (WINDOW_W, WINDOW_H), self.window,
+            )
+        pygame.display.flip()
 
     def _update_name_entry(self) -> None:
         if self.input.text_submit:
@@ -174,12 +192,19 @@ class Game:
 
     # ------------------------------------------------------------------
     def _render(self) -> None:
+        # --- Gameplay layer (subject to bloom + vignette post-FX). -----
         self.world.draw_background(self.screen)
         self.world.draw_tiles(self.screen)
         self.entities.draw_all(self.screen, self.world.camera_x)
         self.player.draw(self.screen, self.world.camera_x)
         particles.get().draw(self.screen, self.world.camera_x)
 
+        # Bloom and vignette enhance the gameplay frame only - they
+        # would just smear/dim the HUD if applied after it.
+        R.apply_bloom(self.screen)
+        self.screen.blit(self._vignette, (0, 0))
+
+        # --- HUD layer (drawn on top, untouched by post-FX). -----------
         board = leaderboard.get()
         scores = board.top(10)
         status = board.status()

@@ -49,7 +49,13 @@ TRIGGER_THRESHOLD = 0.3
 
 
 class Input:
-    def __init__(self) -> None:
+    def __init__(self, render_scale: int = 1) -> None:
+        # The OS window is `render_scale`x larger than the logical render
+        # surface, but the HUD's hit boxes are in logical coords - so we
+        # divide every incoming mouse position by render_scale before we
+        # store it. Audio buttons and any other clickables work without
+        # change after this transform.
+        self._render_scale = max(1, int(render_scale))
         # Public combined held states (keyboard OR pad).
         self.left = False
         self.right = False
@@ -261,7 +267,8 @@ class Input:
             elif k in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
                 self.jump_released = True
         elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-            self.click_xy = ev.pos
+            sx, sy = ev.pos
+            self.click_xy = (sx // self._render_scale, sy // self._render_scale)
 
     # ------------------------------------------------------------------
     def _handle_pad_event(self, ev: pygame.event.Event) -> None:
