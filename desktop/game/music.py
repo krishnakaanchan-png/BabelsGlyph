@@ -34,9 +34,19 @@ from typing import Optional
 import pygame
 
 
+# Sample rate used by the legacy synthesis fallback (kept for the renderer
+# tool only; the shipped track is loaded as a pre-encoded OGG, see below).
 SR = 22050
 LOOP_SEC = 24.0
 N_TOTAL = int(LOOP_SEC * SR)
+
+# Runtime mixer config. The shipped music track is stereo 44.1 kHz, so we
+# initialise the mixer at the same rate to avoid pygame downsampling it
+# (resampling to 22 kHz mono is what produced the audible crackle/aliasing
+# on idle screens).
+MIXER_SR = 44100
+MIXER_CHANNELS = 2
+MIXER_BUFFER = 1024
 
 # Integer-phase sine lookup table for fast synthesis without per-sample math.sin().
 _LUT_SZ = 4096                       # power of two
@@ -325,9 +335,10 @@ class MusicPlayer:
     def init(self) -> None:
         try:
             if not pygame.mixer.get_init():
-                # Larger buffer (1024 vs 512) to eliminate underrun crackle on
-                # idle screens (pause / death / title).
-                pygame.mixer.init(SR, -16, 1, 1024)
+                # Stereo 44.1 kHz to match the shipped OGG track so pygame
+                # never has to resample. 1024-sample buffer (~23 ms) is
+                # large enough to avoid underrun crackle on idle screens.
+                pygame.mixer.init(MIXER_SR, -16, MIXER_CHANNELS, MIXER_BUFFER)
         except pygame.error:
             self.enabled = False
             return
