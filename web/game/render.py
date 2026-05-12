@@ -2,6 +2,7 @@
 from __future__ import annotations
 import math
 import os
+import random
 import sys
 
 import pygame
@@ -39,6 +40,13 @@ STEAM_WHITE   = (240, 240, 240)
 PARCHMENT     = (228, 208, 160)
 INK           = (60, 40, 30)
 WORKSHOP_GREEN= (80, 130, 90)
+TITLE_INK     = (16, 10, 8)
+TITLE_GOLD_D  = (150, 75, 22)
+TITLE_GOLD    = (255, 196, 66)
+TITLE_GOLD_HI = (255, 246, 184)
+
+
+_TITLE_BG_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 
 
 def resource_path(rel: str) -> str:
@@ -52,6 +60,126 @@ def lerp_color(a, b, t: float):
     return (int(a[0] + (b[0] - a[0]) * t),
             int(a[1] + (b[1] - a[1]) * t),
             int(a[2] + (b[2] - a[2]) * t))
+
+
+def _fallback_title_background(w: int, h: int) -> pygame.Surface:
+    s = pygame.Surface((w, h)).convert()
+    horizon = int(h * 0.68)
+    for y in range(h):
+        t = y / h
+        if t < 0.48:
+            c = lerp_color((16, 13, 28), (98, 42, 34), t / 0.48)
+        else:
+            c = lerp_color((238, 116, 30), (48, 29, 22), (t - 0.48) / 0.52)
+        pygame.draw.line(s, c, (0, y), (w, y))
+
+    glow = pygame.Surface((w, h), pygame.SRCALPHA)
+    for r in range(int(w * 0.42), 12, -18):
+        a = int(120 * (1 - r / (w * 0.42)) ** 1.7)
+        pygame.draw.circle(glow, (255, 181, 58, a), (w // 2, horizon), r)
+    s.blit(glow, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+
+    rng = random.Random(1848)
+    stars = pygame.Surface((w, h), pygame.SRCALPHA)
+    for _ in range(520):
+        x = rng.randrange(w)
+        y = rng.randrange(0, int(h * 0.55))
+        pygame.draw.circle(stars, (255, 230, 170, rng.randint(55, 190)), (x, y), rng.choice([1, 1, 1, 2]))
+    s.blit(stars, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+
+    def block(x, base_y, bw, bh, col):
+        rect = pygame.Rect(x, base_y - bh, bw, bh)
+        pygame.draw.rect(s, col, rect)
+        pygame.draw.rect(s, (42, 25, 18), rect, 1)
+        pygame.draw.line(s, (214, 112, 38), rect.topleft, rect.topright, 1)
+        for yy in range(rect.top + 12, rect.bottom, 22):
+            pygame.draw.line(s, (82, 45, 28), (rect.left, yy), (rect.right, yy), 1)
+
+    for x in range(-30, w + 80, 88):
+        block(x, horizon + rng.randint(28, 82), rng.randint(54, 120), rng.randint(70, 170), (84, 48, 31))
+    for x in range(-50, w + 100, 120):
+        block(x, h + rng.randint(-18, 20), rng.randint(88, 180), rng.randint(90, 220), (52, 32, 24))
+
+    for y in range(h):
+        d = abs(y - h * 0.52) / (h * 0.52)
+        a = int(max(0, (d ** 1.8) * 95))
+        pygame.draw.line(s, (0, 0, 0, a), (0, y), (w, y))
+    return s
+
+
+def get_title_background(w: int, h: int) -> pygame.Surface:
+    key = (w, h)
+    if key in _TITLE_BG_CACHE:
+        return _TITLE_BG_CACHE[key]
+    path = resource_path("assets/title_bg.png")
+    try:
+        src = pygame.image.load(path).convert()
+        bg = pygame.transform.smoothscale(src, (w, h))
+    except Exception:
+        bg = _fallback_title_background(w, h)
+    _TITLE_BG_CACHE[key] = bg
+    return bg
+
+
+def draw_letterbox(surf: pygame.Surface, height: int = 22, alpha: int = 150) -> None:
+    w, h = surf.get_size()
+    band = pygame.Surface((w, height), pygame.SRCALPHA)
+    band.fill((0, 0, 0, alpha))
+    surf.blit(band, (0, 0))
+    surf.blit(band, (0, h - height))
+
+
+def glow_text(surf: pygame.Surface, font: pygame.font.Font, text: str,
+              center: tuple[int, int], *, fill=TITLE_GOLD,
+              glow=GLYPH_GLOW, shadow=TITLE_INK, radius: int = 4) -> pygame.Rect:
+    base = font.render(text, True, fill)
+    rect = base.get_rect(center=center)
+    for off in range(radius, 0, -1):
+        a = max(20, 34 - off * 3)
+        for dx, dy in ((-off, 0), (off, 0), (0, -off), (0, off)):
+            halo = font.render(text, True, glow)
+            halo.set_alpha(a)
+            surf.blit(halo, rect.move(dx, dy))
+    rim = font.render(text, True, TITLE_GOLD_D)
+    for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
+        surf.blit(rim, rect.move(dx, dy))
+    sh = font.render(text, True, shadow)
+    surf.blit(sh, rect.move(3, 4))
+    surf.blit(base, rect)
+    hi = font.render(text, True, TITLE_GOLD_HI)
+    hi.set_alpha(120)
+    surf.blit(hi, rect.move(-1, -1))
+    return rect
+
+
+def carved_panel(surf: pygame.Surface, rect: pygame.Rect, *,
+                 fill=(42, 24, 14, 212), border=TITLE_GOLD_D,
+                 glow_alpha: int = 50) -> None:
+    bg = pygame.Surface(rect.size, pygame.SRCALPHA)
+    for y in range(rect.height):
+        t = y / max(1, rect.height - 1)
+        c = lerp_color((fill[0] + 30, fill[1] + 18, fill[2] + 8), fill[:3], t)
+        pygame.draw.line(bg, (*c, fill[3]), (0, y), (rect.width, y))
+    rng = random.Random(rect.x * 37 + rect.y * 19 + rect.width)
+    for _ in range(max(18, rect.width * rect.height // 1800)):
+        x = rng.randrange(rect.width)
+        y = rng.randrange(rect.height)
+        bg.set_at((x, y), (255, 205, 120, rng.randint(18, 48)))
+    surf.blit(bg, rect.topleft)
+
+    if glow_alpha:
+        halo = pygame.Surface((rect.width + 18, rect.height + 18), pygame.SRCALPHA)
+        pygame.draw.rect(halo, (*GLYPH_GLOW, glow_alpha), halo.get_rect(), 2)
+        surf.blit(halo, (rect.x - 9, rect.y - 9), special_flags=pygame.BLEND_RGBA_ADD)
+    pygame.draw.rect(surf, border, rect, 2)
+    pygame.draw.rect(surf, GLYPH_GLOW, rect.inflate(-8, -8), 1)
+    pygame.draw.rect(surf, TITLE_INK, rect.inflate(-16, -16), 1)
+    corner = 18
+    for sx in (rect.left, rect.right):
+        for sy in (rect.top, rect.bottom):
+            dx = 1 if sx == rect.left else -1
+            dy = 1 if sy == rect.top else -1
+            pygame.draw.line(surf, border, (sx, sy + dy * corner), (sx + dx * corner, sy), 2)
 
 
 # ============================================================================
