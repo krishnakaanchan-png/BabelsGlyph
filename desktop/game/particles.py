@@ -4,6 +4,8 @@ import math
 import random
 import pygame
 
+from . import render as R
+
 
 class Particle:
     __slots__ = ("x", "y", "vx", "vy", "life", "max_life", "size",
@@ -165,6 +167,14 @@ class ParticleSystem:
                 continue
             alpha = int(255 * (0.5 + 0.5 * t))
             r = max(1, int(sz))
+            fx_index = {"spark": 1, "circle": 0, "square": 2}.get(p.kind, 0)
+            fx = R.get_sheet_frame("fx_glows.png", 4, 4, fx_index)
+            if fx is not None:
+                size = max(4, int(r * (4 if p.kind == "spark" else 5)))
+                img = pygame.transform.smoothscale(fx, (size, size))
+                img.set_alpha(alpha)
+                surf.blit(img, (sx - size // 2, sy - size // 2), special_flags=pygame.BLEND_RGBA_ADD)
+                continue
             if p.kind == "spark":
                 # Bright streak in the velocity direction.
                 ex = sx - int(p.vx * 0.02)

@@ -190,6 +190,17 @@ def draw_asset_cover(surf: pygame.Surface, name: str, rect: pygame.Rect,
     return True
 
 
+def draw_sheet_frame_contain(surf: pygame.Surface, name: str,
+                             cols: int, rows: int, index: int,
+                             rect: pygame.Rect) -> bool:
+    frame = get_sheet_frame(name, cols, rows, index)
+    if frame is None:
+        return False
+    scaled = pygame.transform.smoothscale(frame, (rect.width, rect.height))
+    surf.blit(scaled, rect.topleft)
+    return True
+
+
 def get_title_background(w: int, h: int) -> pygame.Surface:
     key = (w, h)
     if key in _TITLE_BG_CACHE:

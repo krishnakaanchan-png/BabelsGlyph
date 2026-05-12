@@ -35,7 +35,11 @@ class HUD:
             pygame.draw.rect(surf, R.STONE_DARK, rect.inflate(-6, -6), 1)
 
     def _title_panel(self, surf, rect: pygame.Rect):
-        R.carved_panel(surf, rect, fill=(44, 25, 14, 218), border=R.TITLE_GOLD_D)
+        if not R.draw_asset_cover(surf, "ui_panels.png", rect, alpha=True):
+            R.carved_panel(surf, rect, fill=(44, 25, 14, 218), border=R.TITLE_GOLD_D)
+        shade = pygame.Surface(rect.size, pygame.SRCALPHA)
+        shade.fill((10, 6, 3, 58))
+        surf.blit(shade, rect.topleft)
 
     def _center_text(self, surf, font, text, center, color=R.BONE, shadow=True):
         img = font.render(text, True, color)
@@ -44,11 +48,12 @@ class HUD:
         return img.get_rect(center=center)
 
     def _draw_keycap(self, surf, label: str, rect: pygame.Rect):
-        cap = pygame.Surface(rect.size, pygame.SRCALPHA)
-        cap.fill((30, 17, 9, 230))
-        surf.blit(cap, rect.topleft)
-        pygame.draw.rect(surf, R.TITLE_GOLD_D, rect, 2)
-        pygame.draw.rect(surf, R.GLYPH_GLOW, rect.inflate(-5, -5), 1)
+        if not R.draw_asset_cover(surf, "ui_keycaps.png", rect, alpha=True):
+            cap = pygame.Surface(rect.size, pygame.SRCALPHA)
+            cap.fill((30, 17, 9, 230))
+            surf.blit(cap, rect.topleft)
+            pygame.draw.rect(surf, R.TITLE_GOLD_D, rect, 2)
+            pygame.draw.rect(surf, R.GLYPH_GLOW, rect.inflate(-5, -5), 1)
         txt = self.font_sm.render(label, True, R.TITLE_GOLD_HI)
         surf.blit(txt, (rect.centerx - txt.get_width() // 2,
                         rect.centery - txt.get_height() // 2))
@@ -291,7 +296,7 @@ class HUD:
         )
 
         cta = pygame.Rect(276, 454, 408, 38)
-        R.carved_panel(surf, cta, fill=(45, 25, 13, 210), border=R.COPPER_LIGHT, glow_alpha=80)
+        self._title_panel(surf, cta)
         start = self.font_sm.render("PRESS SPACE OR A TO START", True, R.TITLE_GOLD_HI)
         surf.blit(start, (cta.centerx - start.get_width() // 2,
                           cta.centery - start.get_height() // 2))
@@ -299,7 +304,7 @@ class HUD:
 
         if highscore:
             hs_rect = pygame.Rect(364, 496, 232, 38)
-            R.carved_panel(surf, hs_rect, fill=(38, 23, 13, 220), border=R.TITLE_GOLD_D, glow_alpha=35)
+            self._title_panel(surf, hs_rect)
             self._center_text(surf, self.font_md, f"BEST RUN: {int(highscore)} m", hs_rect.center, R.TITLE_GOLD_HI)
 
     def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record,
