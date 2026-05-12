@@ -21,6 +21,15 @@ class HUD:
         self.music_btn_rect: pygame.Rect | None = None
         self.sfx_btn_rect: pygame.Rect | None = None
 
+    def _panel(self, surf, rect: pygame.Rect, *, border=R.GLYPH_GLOW,
+               fill=(20, 16, 12, 170), inner=True):
+        bg = pygame.Surface(rect.size, pygame.SRCALPHA)
+        bg.fill(fill)
+        surf.blit(bg, rect.topleft)
+        pygame.draw.rect(surf, border, rect, 1)
+        if inner and rect.width > 8 and rect.height > 8:
+            pygame.draw.rect(surf, R.STONE_DARK, rect.inflate(-6, -6), 1)
+
     def _text(self, surf, font, text, pos, color=R.BONE, shadow=True):
         if shadow:
             sh = font.render(text, True, R.STONE_DARK)
@@ -148,25 +157,35 @@ class HUD:
                    player_name: str | None = None,
                    board_status: str | None = None,
                    gamepad_connected: bool = False):
-        s = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        s.fill((0, 0, 0, 110))
-        surf.blit(s, (0, 0))
+        veil = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 125))
+        surf.blit(veil, (0, 0))
+
+        hero = pygame.Rect(56, 42, SCREEN_W - 112, 112)
+        self._panel(surf, hero, fill=(20, 16, 12, 185))
+
         title = self.font_huge.render("BABEL'S GLYPH", True, R.GLYPH_GLOW)
-        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 60))
+        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 58))
         sub = self.font_md.render("An Endless Run Through Ancient Tech", True, R.BONE)
-        surf.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 120))
+        surf.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 116))
 
-        if player_name:
-            who = self.font_sm.render(f"Welcome, {player_name}    (P to change name)",
-                                      True, R.SAND_LIGHT)
-            surf.blit(who, (SCREEN_W // 2 - who.get_width() // 2, 144))
+        welcome_text = (
+            f"Welcome, {player_name}  ·  Press P to change name"
+            if player_name else
+            "Press P to set your leaderboard name"
+        )
+        who = self.font_sm.render(welcome_text, True, R.SAND_LIGHT)
+        surf.blit(who, (SCREEN_W // 2 - who.get_width() // 2, 142))
 
-        # Left column: controls / instructions.
-        # Gamepad hints are always shown so players know controller
-        # support exists; the 'detected' tag flips to live when a pad is
-        # actually plugged in. We render keyboard and controller as two
-        # side-by-side mini-columns so neither runs into the leaderboard
-        # panel on the right.
+        intro = self.font_md.render(
+            "Outrun the collapsing past. Avoid hazards. Collect glyphs.",
+            True, R.BONE,
+        )
+        surf.blit(intro, (56, 172))
+
+        controls_rect = pygame.Rect(56, 206, 560, 248)
+        self._panel(surf, controls_rect, fill=(18, 14, 10, 190))
+
         pad_status = "(detected)" if gamepad_connected else "(plug in to use)"
         kb_lines = [
             ("Keyboard",                  R.GLYPH_GLOW),
@@ -189,32 +208,31 @@ class HUD:
             ("Start          begin",      R.BONE),
         ]
 
-        intro = self.font_sm.render(
-            "Outrun the collapsing past.  Avoid hazards.  Collect glyphs.",
-            True, R.BONE,
-        )
-        surf.blit(intro, (60, 170))
-
-        kb_x, pad_x, list_y = 60, 300, 200
+        kb_x, pad_x, list_y = controls_rect.x + 24, controls_rect.x + 276, controls_rect.y + 18
         for i, (text, col) in enumerate(kb_lines):
             t = self.font_sm.render(text, True, col)
-            surf.blit(t, (kb_x, list_y + i * 20))
+            surf.blit(t, (kb_x, list_y + i * 26))
         for i, (text, col) in enumerate(pad_lines):
             t = self.font_sm.render(text, True, col)
-            surf.blit(t, (pad_x, list_y + i * 20))
+            surf.blit(t, (pad_x, list_y + i * 26))
 
-        cta = self.font_md.render("Press SPACE or A to begin", True, R.GLYPH_GLOW)
-        surf.blit(cta, (60, list_y + len(kb_lines) * 20 + 14))
+        cta_rect = pygame.Rect(56, 466, 560, 60)
+        self._panel(surf, cta_rect, fill=(30, 22, 14, 210), border=R.COPPER_LIGHT)
+        cta = self.font_big.render("Press SPACE or A to begin", True, R.GLYPH_GLOW)
+        surf.blit(cta, (cta_rect.centerx - cta.get_width() // 2,
+                        cta_rect.centery - cta.get_height() // 2))
 
-        # Right column: leaderboard panel.
         self.draw_leaderboard(
-            surf, scores or [], x=SCREEN_W - 360, y=170, width=320,
-            highlight_name=player_name, status=board_status,
+            surf, scores or [], x=642, y=206, width=264,
+            highlight_name=player_name, status=board_status, max_rows=8,
         )
 
         if highscore:
+            hs_rect = pygame.Rect(642, 466, 264, 60)
+            self._panel(surf, hs_rect, fill=(18, 14, 10, 200), border=R.GLYPH_GLOW)
             ht = self.font_md.render(f"Best run: {int(highscore)} m", True, R.GLYPH_GLOW)
-            surf.blit(ht, (SCREEN_W // 2 - ht.get_width() // 2, SCREEN_H - 60))
+            surf.blit(ht, (hs_rect.centerx - ht.get_width() // 2,
+                           hs_rect.centery - ht.get_height() // 2))
 
     def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record,
                       *, scores=None, player_name: str | None = None,
