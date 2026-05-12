@@ -548,6 +548,33 @@ class Player:
                                  (0, 4, r.w, r.h - 4), border_radius=4)
                 surf.blit(trail, (tx, sy))
 
+        frame_idx = 0
+        if self._invuln > 0:
+            frame_idx = 7
+        elif self._sliding:
+            frame_idx = 6
+        elif self.is_dashing:
+            frame_idx = 5
+        elif not self.on_ground and self.vy < 0:
+            frame_idx = 3
+        elif not self.on_ground:
+            frame_idx = 4
+        elif abs(self.vx) > 40:
+            frame_idx = 1 + (int(self._anim_t * 12) % 2)
+        frame = R.get_sheet_frame("player_robed_runner.png", 3, 3, frame_idx)
+        if frame is not None:
+            sprite_h = 58 if not self._sliding else 36
+            sprite_w = 48 if not self._sliding else 58
+            sprite = pygame.transform.smoothscale(frame, (sprite_w, sprite_h))
+            if self.facing < 0:
+                sprite = pygame.transform.flip(sprite, True, False)
+            surf.blit(sprite, (sx + r.w // 2 - sprite_w // 2, sy + r.h - sprite_h + 2))
+            if not self.on_ground and self._jumps_left > 0 and not self.is_dashing:
+                aura = pygame.Surface((r.w + 6, 4), pygame.SRCALPHA)
+                pygame.draw.ellipse(aura, (*R.GLYPH_GLOW_S, 60), aura.get_rect())
+                surf.blit(aura, (sx - 3, sy + r.h - 1))
+            return
+
         if self._sliding:
             self._draw_sliding(surf, sx, sy, r)
             return

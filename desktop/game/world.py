@@ -404,6 +404,30 @@ def _ensure_bg(zone: int) -> dict:
     return _BG_CACHE[key]  # type: ignore[return-value]
 
 
+def _ai_bg_name(zone: int) -> str:
+    return ("bg_sandstone.png", "bg_forge.png", "bg_skyworkshop.png")[max(0, min(2, zone))]
+
+
+def _ai_tile_sheet(zone: int) -> str:
+    return ("tiles_sandstone.png", "tiles_forge.png", "tiles_skyworkshop.png")[max(0, min(2, zone))]
+
+
+def _ai_tile_index(t: int, variant: int, crumbling: bool) -> int | None:
+    if t == T_STONE:
+        return variant
+    if t == T_BRICK:
+        return 8 + variant
+    if t == T_CRUMBLE:
+        return 21 + variant if crumbling else 16 + variant
+    if t == T_ONEWAY:
+        return 39 + variant
+    if t == T_FORGE:
+        return 48 + variant
+    if t == T_DECO:
+        return 24 + variant
+    return None
+
+
 # ============================================================================
 # World
 # ============================================================================
@@ -584,6 +608,8 @@ class World:
     # Drawing
     def draw_background(self, surf: pygame.Surface) -> None:
         zone = self.current_zone
+        if R.draw_asset_cover(surf, _ai_bg_name(zone), pygame.Rect(0, 0, SCREEN_W, SCREEN_H), alpha=False):
+            return
         bg = _ensure_bg(zone)
         surf.blit(bg["sky"], (0, 0))
 
@@ -647,6 +673,15 @@ class World:
     def _blit_tile(self, surf, t, px, py, zone, col, row, crumbling):
         # Variant from position (deterministic).
         v = (col * 7 + row * 13) % 4
+        if t == T_SPIKE:
+            if R.draw_asset_contain(surf, "hazard_spikes.png", pygame.Rect(px, py - 4, TILE, TILE + 4)):
+                return
+        ai_idx = _ai_tile_index(t, v, crumbling)
+        if ai_idx is not None:
+            frame = R.get_sheet_frame(_ai_tile_sheet(zone), 8, 8, ai_idx)
+            if frame is not None:
+                surf.blit(pygame.transform.smoothscale(frame, (TILE, TILE)), (px, py))
+                return
         if t == T_CRUMBLE and crumbling:
             sprite = _TILE_CACHE.get(("crumbling", zone, v))
         else:

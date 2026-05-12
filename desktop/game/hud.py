@@ -181,8 +181,16 @@ class HUD:
 
         col_m = R.STONE_DARK if music_muted else R.GLYPH_GLOW
         col_s = R.STONE_DARK if sfx_muted else R.BONE
-        self._draw_note_icon(surf, m_rect.centerx, m_rect.centery, music_muted, col_m)
-        self._draw_speaker_icon(surf, s_rect.centerx, s_rect.centery, sfx_muted, col_s)
+        music_icon = R.get_sheet_frame("ui_audio_icons.png", 2, 2, 1 if music_muted else 0)
+        sfx_icon = R.get_sheet_frame("ui_audio_icons.png", 2, 2, 3 if sfx_muted else 2)
+        if music_icon is not None:
+            surf.blit(pygame.transform.smoothscale(music_icon, (18, 18)), (m_rect.x + 3, m_rect.y + 2))
+        else:
+            self._draw_note_icon(surf, m_rect.centerx, m_rect.centery, music_muted, col_m)
+        if sfx_icon is not None:
+            surf.blit(pygame.transform.smoothscale(sfx_icon, (18, 18)), (s_rect.x + 3, s_rect.y + 2))
+        else:
+            self._draw_speaker_icon(surf, s_rect.centerx, s_rect.centery, sfx_muted, col_s)
 
         # Tiny key hint below.
         hint = self.font_xs.render("M  N", True, R.SAND_LIGHT)
@@ -249,15 +257,19 @@ class HUD:
         R.draw_letterbox(surf, 20, 135)
 
         pulse = int(10 * (1 + math.sin(t * 2.4)))
-        R.glow_text(
-            surf, self.font_title, "BABEL'S GLYPH", (SCREEN_W // 2, 82),
-            fill=R.TITLE_GOLD, glow=R.GLYPH_GLOW_S, radius=5 + pulse // 6,
-        )
+        logo = R.get_scaled_asset("title_logo.png", 650, 170, alpha=True, cover=True)
+        if logo is not None:
+            surf.blit(logo, (SCREEN_W // 2 - logo.get_width() // 2, 8))
+        else:
+            R.glow_text(
+                surf, self.font_title, "BABEL'S GLYPH", (SCREEN_W // 2, 82),
+                fill=R.TITLE_GOLD, glow=R.GLYPH_GLOW_S, radius=5 + pulse // 6,
+            )
         self._center_text(
             surf, self.font_md, "An Endless Run Through Ancient Tech",
-            (SCREEN_W // 2, 150), R.TITLE_GOLD_HI,
+            (SCREEN_W // 2, 158), R.TITLE_GOLD_HI,
         )
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (330, 172), (630, 172), 1)
+        pygame.draw.line(surf, R.TITLE_GOLD_D, (330, 180), (630, 180), 1)
         welcome_rect = pygame.Rect(SCREEN_W // 2 - 148, 168, 296, 52)
         plate = pygame.Surface(welcome_rect.size, pygame.SRCALPHA)
         plate.fill((25, 14, 8, 135))
@@ -278,9 +290,9 @@ class HUD:
             highlight_name=player_name, status=board_status,
         )
 
-        cta = pygame.Rect(270, 424, 420, 54)
+        cta = pygame.Rect(276, 454, 408, 38)
         R.carved_panel(surf, cta, fill=(45, 25, 13, 210), border=R.COPPER_LIGHT, glow_alpha=80)
-        start = self.font_lg.render("Press SPACE or A to Start", True, R.TITLE_GOLD_HI)
+        start = self.font_sm.render("PRESS SPACE OR A TO START", True, R.TITLE_GOLD_HI)
         surf.blit(start, (cta.centerx - start.get_width() // 2,
                           cta.centery - start.get_height() // 2))
         pygame.draw.line(surf, R.GLYPH_GLOW_S, (cta.x + 38, cta.bottom - 9), (cta.right - 38, cta.bottom - 9), 2)

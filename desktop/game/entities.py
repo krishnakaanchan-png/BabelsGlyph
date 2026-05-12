@@ -86,6 +86,8 @@ class GlyphPickup(Entity):
     def draw(self, surf, camera_x):
         sx = _world_to_screen(self.x, camera_x)
         sy = int(self.y + math.sin(self._t) * 3)
+        if R.draw_asset_contain(surf, "pickup_glyph.png", pygame.Rect(sx - 12, sy - 12, 24, 24)):
+            return
         # Outer halo.
         _circle_alpha(surf, R.GLYPH_GLOW, (sx, sy), 14, 50)
         _circle_alpha(surf, R.GLYPH_GLOW_S, (sx, sy), 10, 90)
@@ -123,6 +125,8 @@ class HeartPickup(Entity):
     def draw(self, surf, camera_x):
         sx = _world_to_screen(self.x, camera_x)
         sy = int(self.y + math.sin(self._t) * 2)
+        if R.draw_asset_contain(surf, "pickup_heart.png", pygame.Rect(sx - 13, sy - 13, 26, 26)):
+            return
         _circle_alpha(surf, R.HEART_RED, (sx, sy), 14, 50)
         # Heart shape: two circles + diamond.
         pygame.draw.circle(surf, R.HEART_RED, (sx - 4, sy - 2), 6)
@@ -614,6 +618,8 @@ class GlyphBomb(Entity):
     def draw(self, surf, camera_x):
         sx = _world_to_screen(self.x, camera_x)
         sy = int(self.y)
+        if R.draw_asset_contain(surf, "glyph_bomb.png", pygame.Rect(sx - 11, sy - 11, 22, 22)):
+            return
         # Pulsing glow.
         pulse = 6 + int((math.sin(self._t) + 1) * 2)
         _circle_alpha(surf, R.GLYPH_GLOW, (sx, sy), pulse + 4, 100)
@@ -735,6 +741,20 @@ class Automaton(Entity):
     def draw(self, surf, camera_x):
         rx = _world_to_screen(self.x, camera_x)
         ry = int(self.y)
+        frame_idx = 1 + (int(self._t * 7) % 2)
+        if self._hurt > 0:
+            frame_idx = 4
+        frame = R.get_sheet_frame("enemy_automaton.png", 3, 3, frame_idx)
+        if frame is not None:
+            sprite = pygame.transform.smoothscale(frame, (48, 56))
+            if self.dir > 0:
+                sprite = pygame.transform.flip(sprite, True, False)
+            surf.blit(sprite, (rx - 12, ry - 20))
+            if self.hp < self.HP:
+                for i in range(self.hp):
+                    pygame.draw.rect(surf, R.CHARGE_FULL, (rx + 2 + i * 6, ry - 14, 4, 3))
+                    pygame.draw.rect(surf, R.STONE_DARK, (rx + 2 + i * 6, ry - 14, 4, 3), 1)
+            return
         body_color = R.BLOOD if self._hurt > 0 else R.GEAR_BRONZE
         body_dark  = R.GEAR_BRONZE_D
         # Drop shadow.

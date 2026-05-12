@@ -48,6 +48,9 @@ TITLE_GOLD_HI = (255, 246, 184)
 
 _TITLE_BG_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 _TITLE_LOGO_CACHE: dict[int, pygame.Surface | None] = {}
+_ASSET_CACHE: dict[tuple[str, bool], pygame.Surface | None] = {}
+_ASSET_SCALE_CACHE: dict[tuple[str, int, int, bool, bool], pygame.Surface | None] = {}
+_SHEET_FRAME_CACHE: dict[tuple[str, int, int, int], pygame.Surface | None] = {}
 
 
 def resource_path(rel: str) -> str:
@@ -117,6 +120,74 @@ def _cover_scale(src: pygame.Surface, w: int, h: int) -> pygame.Surface:
     x = (tw - w) // 2
     y = (th - h) // 2
     return scaled.subsurface(pygame.Rect(x, y, w, h)).copy()
+
+
+def get_asset(name: str, *, alpha: bool = True) -> pygame.Surface | None:
+    key = (name, alpha)
+    if key in _ASSET_CACHE:
+        return _ASSET_CACHE[key]
+    path = resource_path(f"assets/{name}")
+    try:
+        img = pygame.image.load(path)
+        img = img.convert_alpha() if alpha else img.convert()
+    except Exception:
+        img = None
+    _ASSET_CACHE[key] = img
+    return img
+
+
+def get_scaled_asset(name: str, w: int, h: int, *, alpha: bool = True,
+                     cover: bool = False) -> pygame.Surface | None:
+    key = (name, w, h, alpha, cover)
+    if key in _ASSET_SCALE_CACHE:
+        return _ASSET_SCALE_CACHE[key]
+    src = get_asset(name, alpha=alpha)
+    if src is None:
+        _ASSET_SCALE_CACHE[key] = None
+        return None
+    if cover:
+        out = _cover_scale(src, w, h)
+    else:
+        sw, sh = src.get_size()
+        scale = min(w / sw, h / sh)
+        out = pygame.transform.smoothscale(src, (max(1, int(sw * scale)), max(1, int(sh * scale))))
+    _ASSET_SCALE_CACHE[key] = out
+    return out
+
+
+def get_sheet_frame(name: str, cols: int, rows: int, index: int) -> pygame.Surface | None:
+    key = (name, cols, rows, index)
+    if key in _SHEET_FRAME_CACHE:
+        return _SHEET_FRAME_CACHE[key]
+    sheet = get_asset(name, alpha=True)
+    if sheet is None:
+        _SHEET_FRAME_CACHE[key] = None
+        return None
+    fw = sheet.get_width() // cols
+    fh = sheet.get_height() // rows
+    col = index % cols
+    row = (index // cols) % rows
+    frame = sheet.subsurface(pygame.Rect(col * fw, row * fh, fw, fh)).copy()
+    _SHEET_FRAME_CACHE[key] = frame
+    return frame
+
+
+def draw_asset_contain(surf: pygame.Surface, name: str, rect: pygame.Rect,
+                       *, alpha: bool = True) -> bool:
+    img = get_scaled_asset(name, rect.width, rect.height, alpha=alpha, cover=False)
+    if img is None:
+        return False
+    surf.blit(img, (rect.centerx - img.get_width() // 2, rect.centery - img.get_height() // 2))
+    return True
+
+
+def draw_asset_cover(surf: pygame.Surface, name: str, rect: pygame.Rect,
+                     *, alpha: bool = False) -> bool:
+    img = get_scaled_asset(name, rect.width, rect.height, alpha=alpha, cover=True)
+    if img is None:
+        return False
+    surf.blit(img, rect.topleft)
+    return True
 
 
 def get_title_background(w: int, h: int) -> pygame.Surface:
