@@ -33,7 +33,7 @@ from pathlib import Path
 # ----------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------
-BIN_URL = "https://api.jsonblob.com/019e0989-8fbc-7830-b6f6-068812f476f2"
+BIN_URL = "https://api.jsonblob.com/019e1b11-f8a8-735a-8b02-cdae9ad02996"
 TOP_N = 100              # we keep up to this many scores in the bin
 DEFAULT_REQUEST_TIMEOUT = 10.0
 REFRESH_INTERVAL_S = 30.0  # client-side cooldown between auto-refetches

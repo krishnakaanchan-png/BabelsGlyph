@@ -4,6 +4,7 @@ import pygame
 
 from .constants import SCREEN_W, SCREEN_H
 from . import render as R
+from . import fonts
 
 
 ZONE_NAMES = ["Sandstone Outskirts", "Da Vinci's Forge", "Sky Workshop"]
@@ -11,11 +12,11 @@ ZONE_NAMES = ["Sandstone Outskirts", "Da Vinci's Forge", "Sky Workshop"]
 
 class HUD:
     def __init__(self) -> None:
-        self.font_xs   = pygame.font.SysFont("consolas", 12)
-        self.font_sm   = pygame.font.SysFont("consolas", 14)
-        self.font_md   = pygame.font.SysFont("consolas", 18, bold=True)
-        self.font_big  = pygame.font.SysFont("consolas", 36, bold=True)
-        self.font_huge = pygame.font.SysFont("consolas", 56, bold=True)
+        self.font_xs   = fonts.body(13, weight="regular")
+        self.font_sm   = fonts.body(16, weight="medium")
+        self.font_md   = fonts.body(21, weight="bold")
+        self.font_big  = fonts.display(40, bold=True)
+        self.font_huge = fonts.display(62, bold=True)
         # Hit-rects for the audio mute buttons (set during draw_audio_buttons).
         self.music_btn_rect: pygame.Rect | None = None
         self.sfx_btn_rect: pygame.Rect | None = None

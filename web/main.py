@@ -27,11 +27,14 @@ PIXELS_PER_METER = 50.0
 
 class Game:
     def __init__(self) -> None:
-        # Lock the mixer to a known format BEFORE pygame.init() so the SFX
-        # and music buffers play at the right pitch on every platform.
-        # 1024-sample buffer (~46 ms @ 22050 Hz) prevents underrun crackle
-        # on idle screens; 512 was too tight for some Windows drivers.
-        pygame.mixer.pre_init(22050, -16, 1, 1024)
+        # Lock the mixer BEFORE pygame.init() to the same format as the
+        # shipped music track. This avoids runtime resampling artifacts.
+        pygame.mixer.pre_init(
+            music.MIXER_SR,
+            -16,
+            music.MIXER_CHANNELS,
+            music.MIXER_BUFFER,
+        )
         pygame.init()
         audio.init()
         music.init()
