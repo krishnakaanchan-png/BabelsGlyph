@@ -47,6 +47,7 @@ TITLE_GOLD_HI = (255, 246, 184)
 
 
 _TITLE_BG_CACHE: dict[tuple[int, int], pygame.Surface] = {}
+_TITLE_LOGO_CACHE: dict[int, pygame.Surface | None] = {}
 
 
 def resource_path(rel: str) -> str:
@@ -107,6 +108,17 @@ def _fallback_title_background(w: int, h: int) -> pygame.Surface:
     return s
 
 
+def _cover_scale(src: pygame.Surface, w: int, h: int) -> pygame.Surface:
+    sw, sh = src.get_size()
+    scale = max(w / sw, h / sh)
+    tw = max(w, int(sw * scale))
+    th = max(h, int(sh * scale))
+    scaled = pygame.transform.smoothscale(src, (tw, th))
+    x = (tw - w) // 2
+    y = (th - h) // 2
+    return scaled.subsurface(pygame.Rect(x, y, w, h)).copy()
+
+
 def get_title_background(w: int, h: int) -> pygame.Surface:
     key = (w, h)
     if key in _TITLE_BG_CACHE:
@@ -114,11 +126,26 @@ def get_title_background(w: int, h: int) -> pygame.Surface:
     path = resource_path("assets/title_bg.png")
     try:
         src = pygame.image.load(path).convert()
-        bg = pygame.transform.smoothscale(src, (w, h))
+        bg = _cover_scale(src, w, h)
     except Exception:
         bg = _fallback_title_background(w, h)
     _TITLE_BG_CACHE[key] = bg
     return bg
+
+
+def get_title_logo(width: int) -> pygame.Surface | None:
+    if width in _TITLE_LOGO_CACHE:
+        return _TITLE_LOGO_CACHE[width]
+    path = resource_path("assets/title_logo.png")
+    try:
+        src = pygame.image.load(path).convert_alpha()
+        sw, sh = src.get_size()
+        height = max(1, int(sh * (width / sw)))
+        logo = pygame.transform.smoothscale(src, (width, height))
+    except Exception:
+        logo = None
+    _TITLE_LOGO_CACHE[width] = logo
+    return logo
 
 
 def draw_letterbox(surf: pygame.Surface, height: int = 22, alpha: int = 150) -> None:

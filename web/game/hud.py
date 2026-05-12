@@ -255,9 +255,9 @@ class HUD:
         )
         self._center_text(
             surf, self.font_md, "An Endless Run Through Ancient Tech",
-            (SCREEN_W // 2, 140), R.TITLE_GOLD_HI,
+            (SCREEN_W // 2, 150), R.TITLE_GOLD_HI,
         )
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (330, 162), (630, 162), 1)
+        pygame.draw.line(surf, R.TITLE_GOLD_D, (330, 172), (630, 172), 1)
         welcome_rect = pygame.Rect(SCREEN_W // 2 - 148, 168, 296, 52)
         plate = pygame.Surface(welcome_rect.size, pygame.SRCALPHA)
         plate.fill((25, 14, 8, 135))
