@@ -1,7 +1,9 @@
-"""Global leaderboard backed by a public jsonblob.com bin.
+"""Global leaderboard backed by a public npoint.io bin.
 
 Architecture:
-  * Single shared bin URL (api.jsonblob.com supports CORS).
+  * Single shared bin URL on api.npoint.io (CORS-enabled, no API key, no
+    inactivity TTL — unlike jsonblob.com which we used previously and
+    which silently deletes bins after ~30 days of inactivity).
   * Local cache mirrors the last successful fetch so the UI has data instantly
     on next launch (and stays usable offline).
   * Network I/O happens off the game loop:
@@ -12,15 +14,17 @@ Architecture:
         urllib monkey-patch (routes through a non-existent WebSocket bridge
         and fails for arbitrary public APIs), and direct ``await js.fetch(...)``
         (its returned Promise has no asyncio loop binding in pygbag's CPython).
-  * Submits are GET-modify-PUT with conditional ``If-Match`` on the ETag and
-    one retry on conflict. The local cache is updated optimistically so the
-    player sees their name immediately.
+  * Submits are GET-modify-POST. npoint.io does not enforce If-Match, but we
+    still send the previous ETag and retry once on 412 in case the upstream
+    behaviour ever tightens; for the common case the second attempt simply
+    wins on last-writer-wins semantics.
 
 Score record schema:
     {"name": str, "distance_m": int, "glyphs": int, "ts": int (unix seconds)}
 
-The bin (``BIN_URL``) was created via the jsonblob.com REST API. No API key
-is required for read or write. To rotate the backing store, edit ``BIN_URL``.
+The bin (``BIN_URL``) was created via the npoint.io web UI. No API key is
+required for read or write. To rotate the backing store, create a new bin
+and edit ``BIN_URL``.
 """
 from __future__ import annotations
 import json
@@ -33,7 +37,15 @@ from pathlib import Path
 # ----------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------
-BIN_URL = "https://api.jsonblob.com/019e1b11-f8a8-735a-8b02-cdae9ad02996"
+BIN_URL = "https://api.npoint.io/6465911430d307dbb89b"
+# npoint.io rejects the default "Python-urllib/X.Y" User-Agent with a 403,
+# so all desktop HTTP calls spoof a generic browser UA. The web build goes
+# through the browser's own fetch and ignores this constant.
+_USER_AGENT = "Mozilla/5.0 (BabelsGlyph leaderboard client)"
+# We update the bin with HTTP POST (npoint.io's write verb). The constant
+# keeps the rest of the module verb-agnostic in case the backend ever moves
+# back to a PUT-style API.
+_WRITE_METHOD = "POST"
 TOP_N = 100              # we keep up to this many scores in the bin
 DEFAULT_REQUEST_TIMEOUT = 10.0
 REFRESH_INTERVAL_S = 30.0  # client-side cooldown between auto-refetches
@@ -55,7 +67,7 @@ def _sync_request(method: str, url: str, body: bytes | None = None,
     """Plain blocking HTTP call. Returns (status, body_text, etag)."""
     import urllib.request
     import urllib.error
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = {"User-Agent": _USER_AGENT}
     if body is not None:
         headers["Content-Type"] = "application/json"
     if if_match:
@@ -294,7 +306,7 @@ class Leaderboard:
                 status, text, etag = _sync_request("GET", BIN_URL)
                 payload = self._build_put_payload(status, text, entry)
                 put_status, _, new_etag = _sync_request(
-                    "PUT", BIN_URL, body=payload, if_match=etag
+                    _WRITE_METHOD, BIN_URL, body=payload, if_match=etag
                 )
                 if self._absorb_submit_result(put_status, payload, new_etag):
                     return
@@ -330,7 +342,7 @@ class Leaderboard:
                 status, text, etag = await _async_request("GET", BIN_URL)
                 payload = self._build_put_payload(status, text, entry)
                 put_status, _, new_etag = await _async_request(
-                    "PUT", BIN_URL, body=payload, if_match=etag
+                    _WRITE_METHOD, BIN_URL, body=payload, if_match=etag
                 )
                 if self._absorb_submit_result(put_status, payload, new_etag):
                     return
