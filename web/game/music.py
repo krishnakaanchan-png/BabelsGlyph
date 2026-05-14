@@ -46,7 +46,10 @@ N_TOTAL = int(LOOP_SEC * SR)
 # on idle screens).
 MIXER_SR = 44100
 MIXER_CHANNELS = 2
-MIXER_BUFFER = 1024
+# Larger buffer on web: pygbag's ScriptProcessorNode underruns at 1024,
+# producing constant static/crackle during music playback. 4096 ~93 ms is
+# the smallest stable size we have measured in the browser.
+MIXER_BUFFER = 4096
 
 # Integer-phase sine lookup table for fast synthesis without per-sample math.sin().
 _LUT_SZ = 4096                       # power of two
@@ -292,13 +295,20 @@ def _render_track() -> bytes:
 # ---------------------------------------------------------------------
 
 class MusicPlayer:
-    """Loops the synthesized ambient track on a reserved mixer channel."""
+    """Streams the pre-rendered ambient loop via ``pygame.mixer.music``.
+
+    The web (pygbag/Emscripten) build cannot afford to play a long
+    ``pygame.mixer.Sound`` on loop: the browser's ScriptProcessorNode
+    underruns when mixing a multi-second decoded buffer every frame,
+    which manifests as constant background static. Streaming the OGG
+    through ``mixer.music`` instead lets the browser decode in chunks
+    and keeps the audio path clean.
+    """
 
     def __init__(self) -> None:
         self.enabled = False
         self.muted = False
-        self._channel: Optional["pygame.mixer.Channel"] = None
-        self._sound: Optional["pygame.mixer.Sound"] = None
+        self._path: Optional[str] = None
         # Keep music ~12 dB below SFX so anything residual on the pause
         # screen sits well below voice / FX cues.
         self._volume = 0.30
@@ -335,9 +345,6 @@ class MusicPlayer:
     def init(self) -> None:
         try:
             if not pygame.mixer.get_init():
-                # Stereo 44.1 kHz to match the shipped OGG track so pygame
-                # never has to resample. 1024-sample buffer (~23 ms) is
-                # large enough to avoid underrun crackle on idle screens.
                 pygame.mixer.init(MIXER_SR, -16, MIXER_CHANNELS, MIXER_BUFFER)
         except pygame.error:
             self.enabled = False
@@ -345,74 +352,64 @@ class MusicPlayer:
         try:
             if pygame.mixer.get_num_channels() < 32:
                 pygame.mixer.set_num_channels(32)
-            # Reserve channel 0 for music so SFX (Sound.play auto-pick) skip it.
-            pygame.mixer.set_reserved(1)
-            self._channel = pygame.mixer.Channel(0)
         except Exception:
-            self.enabled = False
-            return
+            pass
 
-        # Prefer the pre-rendered WAV that ships in assets/. Only fall
-        # back to runtime synthesis if no file is found - that path is
-        # mainly there to keep the renderer tool working without a
-        # chicken-and-egg dependency on its own output.
-        loaded = False
+        # Locate the pre-rendered OGG/WAV; mixer.music streams it from
+        # disk instead of decoding the whole loop into a Sound buffer.
         for path in self._candidate_paths():
             if path.exists():
-                try:
-                    self._sound = pygame.mixer.Sound(str(path))
-                    loaded = True
-                    break
-                except pygame.error:
-                    continue
-        if not loaded:
-            try:
-                print("music: assets/music.wav not found; synthesizing fallback "
-                      "(run tools/render_music.py to pre-render).",
-                      file=sys.stderr)
-                data = _render_track()
-                self._sound = pygame.mixer.Sound(buffer=data)
-                loaded = True
-            except Exception:
-                self.enabled = False
-                return
-        self.enabled = bool(loaded)
+                self._path = str(path)
+                break
+        if self._path is None:
+            print("music: assets/music.ogg not found; music disabled on web.",
+                  file=sys.stderr)
+            self.enabled = False
+            return
+        try:
+            pygame.mixer.music.load(self._path)
+            pygame.mixer.music.set_volume(self._volume)
+        except pygame.error:
+            self.enabled = False
+            return
+        self.enabled = True
 
     def play(self, fade_ms: int = 2000) -> None:
-        if not self.enabled or self.muted:
+        if not self.enabled or self.muted or self._path is None:
             return
-        if self._sound is None or self._channel is None:
+        if pygame.mixer.music.get_busy():
             return
-        if self._channel.get_busy():
-            return
-        self._channel.set_volume(self._volume)
-        self._channel.play(self._sound, loops=-1, fade_ms=fade_ms)
+        try:
+            pygame.mixer.music.set_volume(self._volume)
+            pygame.mixer.music.play(loops=-1, fade_ms=fade_ms)
+        except pygame.error:
+            pass
 
     def stop(self, fade_ms: int = 1500) -> None:
-        if not self.enabled or self._channel is None:
+        if not self.enabled:
             return
-        self._channel.fadeout(fade_ms)
+        try:
+            pygame.mixer.music.fadeout(fade_ms)
+        except pygame.error:
+            pass
 
     def set_volume(self, v: float) -> None:
         self._volume = max(0.0, min(1.0, v))
-        if self._channel is not None:
-            try:
-                self._channel.set_volume(self._volume)
-            except Exception:
-                pass
+        try:
+            pygame.mixer.music.set_volume(self._volume)
+        except pygame.error:
+            pass
 
     def set_muted(self, muted: bool) -> None:
         self.muted = bool(muted)
-        if not self.enabled or self._channel is None:
+        if not self.enabled:
             return
         if self.muted:
-            # Soft fade so the toggle itself never clicks.
             try:
-                self._channel.fadeout(220)
-            except Exception:
+                pygame.mixer.music.fadeout(220)
+            except pygame.error:
                 pass
         else:
-            # Resume from start of loop with a gentle fade-in.
             self.play(fade_ms=600)
 
     def toggle_muted(self) -> bool:
