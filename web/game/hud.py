@@ -23,22 +23,18 @@ ZONE_NAMES = ["Sandstone Outskirts", "Da Vinci's Forge", "Sky Workshop"]
 TITLE_IMG_W = 1536
 TITLE_IMG_H = 1024
 
-TITLE_MENU_ITEMS = ("Start", "Options", "Credits", "Quit")
+TITLE_MENU_ITEMS = ()  # new title art bakes "Press Space to Start" — no menu items.
 
-# Each rect covers the inner button face (where the baked text sits).
-# Numbers measured from assets/title_screen.png.
-TITLE_MENU_PNG_RECTS = (
-    pygame.Rect(180, 462, 240, 54),  # Start
-    pygame.Rect(180, 518, 240, 54),  # Options
-    pygame.Rect(180, 574, 240, 54),  # Credits
-    pygame.Rect(180, 630, 240, 54),  # Quit
-)
+# Empty: nothing for the overlay to highlight.
+TITLE_MENU_PNG_RECTS: tuple[pygame.Rect, ...] = ()
 
-# Each rect covers one Top-Runs row (number + name + distance area).
+# Five Top-Runs rows. Coords measured against assets/title_screen.png (1536x1024).
 TITLE_BOARD_PNG_RECTS = (
-    pygame.Rect(1116, 532, 290, 56),
-    pygame.Rect(1116, 592, 290, 56),
-    pygame.Rect(1116, 652, 290, 56),
+    pygame.Rect(1090, 655, 335, 48),
+    pygame.Rect(1090, 713, 335, 48),
+    pygame.Rect(1090, 771, 335, 48),
+    pygame.Rect(1090, 829, 335, 48),
+    pygame.Rect(1090, 887, 335, 48),
 )
 
 # Backwards-compatible aliases so other places in the file keep working.
@@ -197,38 +193,41 @@ class HUD:
 
     def _draw_overlay_menu(self, surf, t: float):
         rects = self._menu_screen_rects()
-        for i, (label, br) in enumerate(zip(TITLE_MENU_ITEMS, rects)):
-            selected = (i == self.title_menu_index)
-            # Mask the baked button-face text with a soft dark inner plate.
-            mask = pygame.Surface((br.width - 8, br.height - 12), pygame.SRCALPHA)
-            mask.fill((14, 9, 6, 215))
-            surf.blit(mask, (br.x + 4, br.y + 6))
-            # Selection aura (additive, very subtle).
-            if selected:
-                pulse = 28 + int(18 * (0.5 + 0.5 * math.sin(t * 3.0)))
-                aura = pygame.Surface((br.width + 12, br.height + 12), pygame.SRCALPHA)
-                pygame.draw.ellipse(aura, (*R.GLYPH_GLOW, pulse), aura.get_rect())
-                surf.blit(aura, (br.x - 6, br.y - 6),
-                          special_flags=pygame.BLEND_RGBA_ADD)
-                color = R.TITLE_GOLD_HI
-            else:
-                color = R.BONE
-            txt = self.title_menu.render(label, True, color)
-            sh = self.title_menu.render(label, True, R.TITLE_INK)
-            cx = br.centerx - txt.get_width() // 2
-            cy = br.centery - txt.get_height() // 2
-            surf.blit(sh, (cx + 1, cy + 1))
-            surf.blit(txt, (cx, cy))
+        sel = self.title_menu_index
+        if not (0 <= sel < len(rects)):
+            return
+        br = rects[sel]
+        radius = max(8, br.height // 2)
+        pulse = 0.5 + 0.5 * math.sin(t * 2.6)
+
+        glow_alpha = 60 + int(50 * pulse)
+        glow = pygame.Surface((br.width + 16, br.height + 16), pygame.SRCALPHA)
+        pygame.draw.rect(glow, (255, 196, 66, glow_alpha), glow.get_rect(),
+                         width=6, border_radius=radius + 4)
+        surf.blit(glow, (br.x - 8, br.y - 8),
+                  special_flags=pygame.BLEND_RGBA_ADD)
+
+        pygame.draw.rect(surf, R.TITLE_GOLD_HI, br, width=3, border_radius=radius)
+        pygame.draw.rect(surf, (255, 246, 184), br.inflate(-6, -6),
+                         width=1, border_radius=max(4, radius - 3))
 
     def _draw_overlay_board(self, surf, scores, *, highlight_name: str | None):
         rects = self._board_screen_rects()
-        scores = (scores or [])[:3]
+        scores = (scores or [])[:5]
         for i, br in enumerate(rects):
-            # Mask the baked row text — cover the full row.
-            mask = pygame.Surface((br.width, br.height), pygame.SRCALPHA)
-            mask.fill((14, 9, 6, 225))
-            surf.blit(mask, br.topleft)
+            radius = max(4, br.height // 3)
+            plate = pygame.Surface(br.size, pygame.SRCALPHA)
+            pygame.draw.rect(plate, (20, 13, 8, 255), plate.get_rect(),
+                             border_radius=radius)
+            surf.blit(plate, br.topleft)
+            pygame.draw.rect(surf, (180, 130, 60), br, width=1,
+                             border_radius=radius)
             if i >= len(scores):
+                dot_color = (200, 160, 90)
+                cy = br.centery
+                for dx in (-10, 0, 10):
+                    pygame.draw.circle(surf, dot_color,
+                                       (br.centerx + dx, cy), 2)
                 continue
             score = scores[i]
             name = str(score.get("name", "?"))[:12]
