@@ -51,6 +51,9 @@ _TITLE_LOGO_CACHE: dict[int, pygame.Surface | None] = {}
 _ASSET_CACHE: dict[tuple[str, bool], pygame.Surface | None] = {}
 _ASSET_SCALE_CACHE: dict[tuple[str, int, int, bool, bool], pygame.Surface | None] = {}
 _SHEET_FRAME_CACHE: dict[tuple[str, int, int, int], pygame.Surface | None] = {}
+_ATLAS_REGION_CACHE: dict[tuple[str, tuple[int, int, int, int]], pygame.Surface | None] = {}
+_ATLAS_9SLICE_CACHE: dict[tuple[str, tuple[int, int, int, int], tuple[int, int, int, int], tuple[int, int, int, int], int, int], pygame.Surface | None] = {}
+_TRIMMED_ASSET_CACHE: dict[str, pygame.Surface | None] = {}
 
 
 def resource_path(rel: str) -> str:
@@ -155,6 +158,22 @@ def get_scaled_asset(name: str, w: int, h: int, *, alpha: bool = True,
     return out
 
 
+def get_trimmed_asset(name: str) -> pygame.Surface | None:
+    if name in _TRIMMED_ASSET_CACHE:
+        return _TRIMMED_ASSET_CACHE[name]
+    src = get_asset(name, alpha=True)
+    if src is None:
+        _TRIMMED_ASSET_CACHE[name] = None
+        return None
+    bounds = src.get_bounding_rect()
+    if bounds.width <= 0 or bounds.height <= 0:
+        _TRIMMED_ASSET_CACHE[name] = None
+        return None
+    img = src.subsurface(bounds).copy()
+    _TRIMMED_ASSET_CACHE[name] = img
+    return img
+
+
 def get_sheet_frame(name: str, cols: int, rows: int, index: int) -> pygame.Surface | None:
     key = (name, cols, rows, index)
     if key in _SHEET_FRAME_CACHE:
@@ -170,6 +189,79 @@ def get_sheet_frame(name: str, cols: int, rows: int, index: int) -> pygame.Surfa
     frame = sheet.subsurface(pygame.Rect(col * fw, row * fh, fw, fh)).copy()
     _SHEET_FRAME_CACHE[key] = frame
     return frame
+
+
+def get_atlas_region(name: str, rect: tuple[int, int, int, int]) -> pygame.Surface | None:
+    key = (name, rect)
+    if key in _ATLAS_REGION_CACHE:
+        return _ATLAS_REGION_CACHE[key]
+    sheet = get_asset(name, alpha=True)
+    if sheet is None:
+        _ATLAS_REGION_CACHE[key] = None
+        return None
+    x, y, w, h = rect
+    bounds = pygame.Rect(0, 0, sheet.get_width(), sheet.get_height())
+    crop = pygame.Rect(x, y, w, h).clip(bounds)
+    if crop.width <= 0 or crop.height <= 0:
+        _ATLAS_REGION_CACHE[key] = None
+        return None
+    frame = sheet.subsurface(crop).copy()
+    _ATLAS_REGION_CACHE[key] = frame
+    return frame
+
+
+def get_atlas_9slice(name: str, rect: tuple[int, int, int, int],
+                     src_border: tuple[int, int, int, int],
+                     dst_border: tuple[int, int, int, int],
+                     width: int, height: int) -> pygame.Surface | None:
+    key = (name, rect, src_border, dst_border, width, height)
+    if key in _ATLAS_9SLICE_CACHE:
+        return _ATLAS_9SLICE_CACHE[key]
+    src = get_atlas_region(name, rect)
+    if src is None or width <= 0 or height <= 0:
+        _ATLAS_9SLICE_CACHE[key] = None
+        return None
+
+    sw, sh = src.get_size()
+    sl, st, sr, sb = src_border
+    dl, dt, dr, db = dst_border
+    sl = max(1, min(sl, sw // 2)); sr = max(1, min(sr, sw - sl - 1))
+    st = max(1, min(st, sh // 2)); sb = max(1, min(sb, sh - st - 1))
+    dl = max(1, min(dl, width // 2)); dr = max(1, min(dr, width - dl))
+    dt = max(1, min(dt, height // 2)); db = max(1, min(db, height - dt))
+
+    out = pygame.Surface((width, height), pygame.SRCALPHA)
+
+    def blit_piece(src_rect: pygame.Rect, dst_rect: pygame.Rect) -> None:
+        if dst_rect.width <= 0 or dst_rect.height <= 0:
+            return
+        piece = src.subsurface(src_rect).copy()
+        if piece.get_size() != dst_rect.size:
+            piece = pygame.transform.smoothscale(piece, dst_rect.size)
+        out.blit(piece, dst_rect.topleft)
+
+    src_x = [0, sl, sw - sr, sw]
+    src_y = [0, st, sh - sb, sh]
+    dst_x = [0, dl, width - dr, width]
+    dst_y = [0, dt, height - db, height]
+    for yi in range(3):
+        for xi in range(3):
+            blit_piece(
+                pygame.Rect(src_x[xi], src_y[yi], src_x[xi + 1] - src_x[xi], src_y[yi + 1] - src_y[yi]),
+                pygame.Rect(dst_x[xi], dst_y[yi], dst_x[xi + 1] - dst_x[xi], dst_y[yi + 1] - dst_y[yi]),
+            )
+    _ATLAS_9SLICE_CACHE[key] = out
+    return out
+
+
+def draw_atlas_9slice(surf: pygame.Surface, name: str, rect: tuple[int, int, int, int],
+                      dest: pygame.Rect, src_border: tuple[int, int, int, int],
+                      dst_border: tuple[int, int, int, int]) -> bool:
+    img = get_atlas_9slice(name, rect, src_border, dst_border, dest.width, dest.height)
+    if img is None:
+        return False
+    surf.blit(img, dest.topleft)
+    return True
 
 
 def draw_asset_contain(surf: pygame.Surface, name: str, rect: pygame.Rect,

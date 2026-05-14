@@ -412,20 +412,51 @@ def _ai_tile_sheet(zone: int) -> str:
     return ("tiles_sandstone.png", "tiles_forge.png", "tiles_skyworkshop.png")[max(0, min(2, zone))]
 
 
-def _ai_tile_index(t: int, variant: int, crumbling: bool) -> int | None:
+_AI_TILE_RECTS = {
+    0: {
+        "solid": [(32, 26, 160, 90), (198, 30, 130, 88), (342, 36, 150, 86), (32, 136, 154, 88)],
+        "body": [(304, 344, 104, 102), (392, 240, 114, 92), (518, 254, 114, 102), (644, 254, 124, 92)],
+        "brick": [(192, 136, 142, 84), (346, 136, 152, 88), (34, 344, 116, 100), (166, 344, 118, 100)],
+        "crumble": [(26, 860, 130, 110), (172, 860, 150, 110), (26, 748, 194, 98), (236, 748, 138, 98)],
+        "oneway": [(372, 556, 274, 94), (656, 566, 342, 86), (718, 668, 284, 80), (542, 864, 456, 106)],
+        "deco": [(522, 380, 94, 158), (406, 668, 156, 92), (682, 776, 178, 68), (786, 252, 206, 204)],
+    },
+    1: {
+        "solid": [(26, 230, 120, 92), (156, 230, 138, 92), (304, 230, 120, 92), (434, 230, 122, 92)],
+        "body": [(28, 536, 114, 106), (146, 334, 126, 90), (278, 666, 146, 90), (782, 666, 140, 114)],
+        "brick": [(28, 536, 114, 106), (158, 550, 232, 92), (146, 334, 126, 90), (154, 128, 136, 84)],
+        "crumble": [(24, 876, 214, 110), (246, 874, 224, 114), (482, 876, 238, 106), (730, 874, 270, 110)],
+        "oneway": [(402, 532, 278, 98), (640, 442, 366, 106), (690, 568, 314, 82), (26, 766, 326, 92)],
+        "deco": [(568, 250, 210, 142), (784, 250, 222, 196), (724, 32, 276, 82), (528, 762, 306, 90)],
+    },
+    2: {
+        "solid": [(26, 424, 144, 90), (26, 526, 196, 84), (236, 528, 178, 84), (288, 126, 158, 84)],
+        "body": [(390, 418, 154, 106), (540, 254, 186, 94), (688, 332, 174, 100), (814, 420, 190, 100)],
+        "brick": [(390, 418, 154, 106), (540, 254, 186, 94), (688, 332, 174, 100), (814, 420, 190, 100)],
+        "crumble": [(24, 824, 182, 104), (340, 890, 196, 90), (722, 888, 280, 92), (26, 714, 324, 92)],
+        "oneway": [(434, 520, 316, 96), (738, 614, 262, 88), (754, 794, 246, 82), (696, 34, 302, 70)],
+        "deco": [(554, 360, 94, 148), (458, 98, 214, 90), (254, 30, 258, 84), (542, 800, 212, 78)],
+    },
+}
+
+
+def _ai_tile_rect(t: int, zone: int, variant: int, crumbling: bool, exposed_top: bool) -> tuple[int, int, int, int] | None:
+    zone_rects = _AI_TILE_RECTS[max(0, min(2, zone))]
     if t == T_STONE:
-        return variant
-    if t == T_BRICK:
-        return 8 + variant
-    if t == T_CRUMBLE:
-        return 21 + variant if crumbling else 16 + variant
-    if t == T_ONEWAY:
-        return 39 + variant
-    if t == T_FORGE:
-        return 48 + variant
-    if t == T_DECO:
-        return 24 + variant
-    return None
+        rects = zone_rects["solid"] if exposed_top else zone_rects["body"]
+    elif t == T_BRICK:
+        rects = zone_rects["brick"]
+    elif t == T_CRUMBLE:
+        rects = zone_rects["crumble"] if crumbling else (zone_rects["solid"] if exposed_top else zone_rects["body"])
+    elif t == T_ONEWAY:
+        rects = zone_rects["solid"]
+    elif t == T_FORGE:
+        rects = _AI_TILE_RECTS[1]["solid"] if exposed_top else _AI_TILE_RECTS[1]["body"]
+    elif t == T_DECO:
+        rects = zone_rects["deco"]
+    else:
+        return None
+    return rects[variant % len(rects)]
 
 
 # ============================================================================
@@ -673,14 +704,28 @@ class World:
     def _blit_tile(self, surf, t, px, py, zone, col, row, crumbling):
         # Variant from position (deterministic).
         v = (col * 7 + row * 13) % 4
+        world_x = px + int(self.camera_x)
+        exposed_top = row == 0 or self.tile_at(world_x + TILE // 2, (row - 1) * TILE + TILE // 2) not in SOLID_TILES
         if t == T_SPIKE:
-            if R.draw_asset_contain(surf, "hazard_spikes.png", pygame.Rect(px, py - 4, TILE, TILE + 4)):
+            spikes = R.get_atlas_region("hazard_spikes.png", (78, 232, 868, 432))
+            if spikes is not None:
+                img = pygame.transform.smoothscale(spikes, (TILE, TILE))
+                surf.blit(img, (px, py))
                 return
-        ai_idx = _ai_tile_index(t, v, crumbling)
-        if ai_idx is not None:
-            frame = R.get_sheet_frame(_ai_tile_sheet(zone), 8, 8, ai_idx)
+        ai_rect = _ai_tile_rect(t, zone, v, crumbling, exposed_top)
+        if ai_rect is not None:
+            frame = R.get_atlas_region(_ai_tile_sheet(zone), ai_rect)
             if frame is not None:
-                surf.blit(pygame.transform.smoothscale(frame, (TILE, TILE)), (px, py))
+                if t == T_ONEWAY:
+                    h = 12
+                    img = pygame.transform.smoothscale(frame, (TILE, h))
+                    surf.blit(img, (px, py))
+                elif t == T_DECO:
+                    img = pygame.transform.smoothscale(frame, (TILE, TILE))
+                    surf.blit(img, (px, py))
+                else:
+                    img = pygame.transform.smoothscale(frame, (TILE, TILE))
+                    surf.blit(img, (px, py))
                 return
         if t == T_CRUMBLE and crumbling:
             sprite = _TILE_CACHE.get(("crumbling", zone, v))
@@ -690,7 +735,7 @@ class World:
             surf.blit(sprite, (px, py))
             # If this is a TOP solid tile (no solid above), add a grass/ridge highlight.
             if t in (T_STONE, T_BRICK, T_FORGE):
-                if row == 0 or self.tile_at(col * TILE + TILE // 2 + 0, (row - 1) * TILE + TILE // 2) not in SOLID_TILES:
+                if exposed_top:
                     self._draw_top_capping(surf, px, py, zone)
 
     def _draw_top_capping(self, surf, px, py, zone):
