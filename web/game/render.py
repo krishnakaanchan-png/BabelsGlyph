@@ -47,6 +47,13 @@ TITLE_GOLD_HI = (255, 246, 184)
 
 
 _TITLE_BG_CACHE: dict[tuple[int, int], pygame.Surface] = {}
+_TITLE_LOGO_CACHE: dict[int, pygame.Surface | None] = {}
+_ASSET_CACHE: dict[tuple[str, bool], pygame.Surface | None] = {}
+_ASSET_SCALE_CACHE: dict[tuple[str, int, int, bool, bool], pygame.Surface | None] = {}
+_SHEET_FRAME_CACHE: dict[tuple[str, int, int, int], pygame.Surface | None] = {}
+_ATLAS_REGION_CACHE: dict[tuple[str, tuple[int, int, int, int]], pygame.Surface | None] = {}
+_ATLAS_9SLICE_CACHE: dict[tuple[str, tuple[int, int, int, int], tuple[int, int, int, int], tuple[int, int, int, int], int, int], pygame.Surface | None] = {}
+_TRIMMED_ASSET_CACHE: dict[str, pygame.Surface | None] = {}
 
 
 def resource_path(rel: str) -> str:
@@ -107,6 +114,185 @@ def _fallback_title_background(w: int, h: int) -> pygame.Surface:
     return s
 
 
+def _cover_scale(src: pygame.Surface, w: int, h: int) -> pygame.Surface:
+    sw, sh = src.get_size()
+    scale = max(w / sw, h / sh)
+    tw = max(w, int(sw * scale))
+    th = max(h, int(sh * scale))
+    scaled = pygame.transform.smoothscale(src, (tw, th))
+    x = (tw - w) // 2
+    y = (th - h) // 2
+    return scaled.subsurface(pygame.Rect(x, y, w, h)).copy()
+
+
+def get_asset(name: str, *, alpha: bool = True) -> pygame.Surface | None:
+    key = (name, alpha)
+    if key in _ASSET_CACHE:
+        return _ASSET_CACHE[key]
+    path = resource_path(f"assets/{name}")
+    try:
+        img = pygame.image.load(path)
+        img = img.convert_alpha() if alpha else img.convert()
+    except Exception:
+        img = None
+    _ASSET_CACHE[key] = img
+    return img
+
+
+def get_scaled_asset(name: str, w: int, h: int, *, alpha: bool = True,
+                     cover: bool = False) -> pygame.Surface | None:
+    key = (name, w, h, alpha, cover)
+    if key in _ASSET_SCALE_CACHE:
+        return _ASSET_SCALE_CACHE[key]
+    src = get_asset(name, alpha=alpha)
+    if src is None:
+        _ASSET_SCALE_CACHE[key] = None
+        return None
+    if cover:
+        out = _cover_scale(src, w, h)
+    else:
+        sw, sh = src.get_size()
+        scale = min(w / sw, h / sh)
+        out = pygame.transform.smoothscale(src, (max(1, int(sw * scale)), max(1, int(sh * scale))))
+    _ASSET_SCALE_CACHE[key] = out
+    return out
+
+
+def get_trimmed_asset(name: str) -> pygame.Surface | None:
+    if name in _TRIMMED_ASSET_CACHE:
+        return _TRIMMED_ASSET_CACHE[name]
+    src = get_asset(name, alpha=True)
+    if src is None:
+        _TRIMMED_ASSET_CACHE[name] = None
+        return None
+    bounds = src.get_bounding_rect()
+    if bounds.width <= 0 or bounds.height <= 0:
+        _TRIMMED_ASSET_CACHE[name] = None
+        return None
+    img = src.subsurface(bounds).copy()
+    _TRIMMED_ASSET_CACHE[name] = img
+    return img
+
+
+def get_sheet_frame(name: str, cols: int, rows: int, index: int) -> pygame.Surface | None:
+    key = (name, cols, rows, index)
+    if key in _SHEET_FRAME_CACHE:
+        return _SHEET_FRAME_CACHE[key]
+    sheet = get_asset(name, alpha=True)
+    if sheet is None:
+        _SHEET_FRAME_CACHE[key] = None
+        return None
+    fw = sheet.get_width() // cols
+    fh = sheet.get_height() // rows
+    col = index % cols
+    row = (index // cols) % rows
+    frame = sheet.subsurface(pygame.Rect(col * fw, row * fh, fw, fh)).copy()
+    _SHEET_FRAME_CACHE[key] = frame
+    return frame
+
+
+def get_atlas_region(name: str, rect: tuple[int, int, int, int]) -> pygame.Surface | None:
+    key = (name, rect)
+    if key in _ATLAS_REGION_CACHE:
+        return _ATLAS_REGION_CACHE[key]
+    sheet = get_asset(name, alpha=True)
+    if sheet is None:
+        _ATLAS_REGION_CACHE[key] = None
+        return None
+    x, y, w, h = rect
+    bounds = pygame.Rect(0, 0, sheet.get_width(), sheet.get_height())
+    crop = pygame.Rect(x, y, w, h).clip(bounds)
+    if crop.width <= 0 or crop.height <= 0:
+        _ATLAS_REGION_CACHE[key] = None
+        return None
+    frame = sheet.subsurface(crop).copy()
+    _ATLAS_REGION_CACHE[key] = frame
+    return frame
+
+
+def get_atlas_9slice(name: str, rect: tuple[int, int, int, int],
+                     src_border: tuple[int, int, int, int],
+                     dst_border: tuple[int, int, int, int],
+                     width: int, height: int) -> pygame.Surface | None:
+    key = (name, rect, src_border, dst_border, width, height)
+    if key in _ATLAS_9SLICE_CACHE:
+        return _ATLAS_9SLICE_CACHE[key]
+    src = get_atlas_region(name, rect)
+    if src is None or width <= 0 or height <= 0:
+        _ATLAS_9SLICE_CACHE[key] = None
+        return None
+
+    sw, sh = src.get_size()
+    sl, st, sr, sb = src_border
+    dl, dt, dr, db = dst_border
+    sl = max(1, min(sl, sw // 2)); sr = max(1, min(sr, sw - sl - 1))
+    st = max(1, min(st, sh // 2)); sb = max(1, min(sb, sh - st - 1))
+    dl = max(1, min(dl, width // 2)); dr = max(1, min(dr, width - dl))
+    dt = max(1, min(dt, height // 2)); db = max(1, min(db, height - dt))
+
+    out = pygame.Surface((width, height), pygame.SRCALPHA)
+
+    def blit_piece(src_rect: pygame.Rect, dst_rect: pygame.Rect) -> None:
+        if dst_rect.width <= 0 or dst_rect.height <= 0:
+            return
+        piece = src.subsurface(src_rect).copy()
+        if piece.get_size() != dst_rect.size:
+            piece = pygame.transform.smoothscale(piece, dst_rect.size)
+        out.blit(piece, dst_rect.topleft)
+
+    src_x = [0, sl, sw - sr, sw]
+    src_y = [0, st, sh - sb, sh]
+    dst_x = [0, dl, width - dr, width]
+    dst_y = [0, dt, height - db, height]
+    for yi in range(3):
+        for xi in range(3):
+            blit_piece(
+                pygame.Rect(src_x[xi], src_y[yi], src_x[xi + 1] - src_x[xi], src_y[yi + 1] - src_y[yi]),
+                pygame.Rect(dst_x[xi], dst_y[yi], dst_x[xi + 1] - dst_x[xi], dst_y[yi + 1] - dst_y[yi]),
+            )
+    _ATLAS_9SLICE_CACHE[key] = out
+    return out
+
+
+def draw_atlas_9slice(surf: pygame.Surface, name: str, rect: tuple[int, int, int, int],
+                      dest: pygame.Rect, src_border: tuple[int, int, int, int],
+                      dst_border: tuple[int, int, int, int]) -> bool:
+    img = get_atlas_9slice(name, rect, src_border, dst_border, dest.width, dest.height)
+    if img is None:
+        return False
+    surf.blit(img, dest.topleft)
+    return True
+
+
+def draw_asset_contain(surf: pygame.Surface, name: str, rect: pygame.Rect,
+                       *, alpha: bool = True) -> bool:
+    img = get_scaled_asset(name, rect.width, rect.height, alpha=alpha, cover=False)
+    if img is None:
+        return False
+    surf.blit(img, (rect.centerx - img.get_width() // 2, rect.centery - img.get_height() // 2))
+    return True
+
+
+def draw_asset_cover(surf: pygame.Surface, name: str, rect: pygame.Rect,
+                     *, alpha: bool = False) -> bool:
+    img = get_scaled_asset(name, rect.width, rect.height, alpha=alpha, cover=True)
+    if img is None:
+        return False
+    surf.blit(img, rect.topleft)
+    return True
+
+
+def draw_sheet_frame_contain(surf: pygame.Surface, name: str,
+                             cols: int, rows: int, index: int,
+                             rect: pygame.Rect) -> bool:
+    frame = get_sheet_frame(name, cols, rows, index)
+    if frame is None:
+        return False
+    scaled = pygame.transform.smoothscale(frame, (rect.width, rect.height))
+    surf.blit(scaled, rect.topleft)
+    return True
+
+
 def get_title_background(w: int, h: int) -> pygame.Surface:
     key = (w, h)
     if key in _TITLE_BG_CACHE:
@@ -114,11 +300,26 @@ def get_title_background(w: int, h: int) -> pygame.Surface:
     path = resource_path("assets/title_bg.png")
     try:
         src = pygame.image.load(path).convert()
-        bg = pygame.transform.smoothscale(src, (w, h))
+        bg = _cover_scale(src, w, h)
     except Exception:
         bg = _fallback_title_background(w, h)
     _TITLE_BG_CACHE[key] = bg
     return bg
+
+
+def get_title_logo(width: int) -> pygame.Surface | None:
+    if width in _TITLE_LOGO_CACHE:
+        return _TITLE_LOGO_CACHE[width]
+    path = resource_path("assets/title_logo.png")
+    try:
+        src = pygame.image.load(path).convert_alpha()
+        sw, sh = src.get_size()
+        height = max(1, int(sh * (width / sw)))
+        logo = pygame.transform.smoothscale(src, (width, height))
+    except Exception:
+        logo = None
+    _TITLE_LOGO_CACHE[width] = logo
+    return logo
 
 
 def draw_letterbox(surf: pygame.Surface, height: int = 22, alpha: int = 150) -> None:

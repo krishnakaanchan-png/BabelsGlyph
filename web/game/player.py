@@ -42,6 +42,18 @@ BOMB_VX = 360.0
 BOMB_VY = -280.0
 BOMB_COOLDOWN = 0.55
 
+PLAYER_FRAME_RECTS = [
+    (114, 80, 154, 214),
+    (394, 78, 188, 218),
+    (684, 78, 194, 218),
+    (80, 352, 198, 230),
+    (400, 342, 170, 240),
+    (612, 384, 334, 198),
+    (50, 700, 266, 166),
+    (388, 658, 188, 216),
+    (716, 656, 168, 218),
+]
+
 
 class Player:
     def __init__(self, world_x: float, world_y: float) -> None:
@@ -432,6 +444,28 @@ class Player:
         # Ground probe (since pygame Rects exclude bottom edge).
         if not self.on_ground and self.vy >= 0:
             probe = pygame.Rect(r.left + 1, r.bottom, r.width - 2, 2)
+            rows = [(probe.bottom - 1) // TILE, probe.top // TILE]
+            rows = [rr for rr in rows if rr >= 0]
+            for row in sorted(set(rows)):
+                plat_top = row * TILE
+                if abs(r.bottom - plat_top) <= 2:
+                    any_oneway = False
+                    for col in range(r.left // TILE, (r.right - 1) // TILE + 1):
+                        cx = col * TILE + TILE // 2
+                        cy = plat_top + TILE // 2
+                        if world.is_oneway(cx, cy):
+                            any_oneway = True
+                            break
+                    if any_oneway:
+                        self.y = plat_top - self.h
+                        self.vy = 0
+                        self.on_ground = True
+                        r = self.rect
+                        break
+
+        # Solid ground probe (since pygame Rects exclude bottom edge).
+        if not self.on_ground and self.vy >= 0:
+            probe = pygame.Rect(r.left + 1, r.bottom, r.width - 2, 2)
             if world.overlaps_solid(probe):
                 # Find the topmost solid tile under our feet and snap to it.
                 rows = [(probe.bottom - 1) // TILE, probe.top // TILE]
@@ -547,6 +581,36 @@ class Player:
                 pygame.draw.rect(trail, (255, 210, 110, max(20, 90 - i * 20)),
                                  (0, 4, r.w, r.h - 4), border_radius=4)
                 surf.blit(trail, (tx, sy))
+
+        frame_idx = 0
+        if self._invuln > 0:
+            frame_idx = 7
+        elif self._sliding:
+            frame_idx = 6
+        elif self.is_dashing:
+            frame_idx = 5
+        elif not self.on_ground and self.vy < 0:
+            frame_idx = 3
+        elif not self.on_ground:
+            frame_idx = 4
+        elif abs(self.vx) > 40:
+            frame_idx = 1 + (int(self._anim_t * 12) % 2)
+        frame = R.get_atlas_region("player_robed_runner.png", PLAYER_FRAME_RECTS[frame_idx])
+        if frame is not None:
+            sprite_h = 40 if not self._sliding else 24
+            sprite_w = max(18, int(frame.get_width() * (sprite_h / frame.get_height())))
+            if self.is_dashing:
+                sprite_w = max(sprite_w, 50)
+            sprite = pygame.transform.smoothscale(frame, (sprite_w, sprite_h))
+            if self.facing < 0:
+                sprite = pygame.transform.flip(sprite, True, False)
+            foot_y = sy + r.h
+            surf.blit(sprite, (sx + r.w // 2 - sprite_w // 2, foot_y - sprite_h))
+            if not self.on_ground and self._jumps_left > 0 and not self.is_dashing:
+                aura = pygame.Surface((r.w + 6, 4), pygame.SRCALPHA)
+                pygame.draw.ellipse(aura, (*R.GLYPH_GLOW_S, 60), aura.get_rect())
+                surf.blit(aura, (sx - 3, sy + r.h - 1))
+            return
 
         if self._sliding:
             self._draw_sliding(surf, sx, sy, r)

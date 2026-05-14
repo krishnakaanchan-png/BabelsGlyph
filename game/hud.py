@@ -11,6 +11,52 @@ from . import fonts
 
 ZONE_NAMES = ["Sandstone Outskirts", "Da Vinci's Forge", "Sky Workshop"]
 
+# ---------------------------------------------------------------------------
+# Title screen — driven by a single composed background PNG (assets/title_screen.png).
+# Only the dynamic / clickable parts are overlaid:
+#   - menu items (text + selection highlight) over the baked menu plaque
+#   - top-runs rows (live name + distance) over the baked board rows
+#
+# Rect coordinates below are in the TITLE PNG's native pixel space (1536x1024).
+# `_title_to_screen` translates them to the on-screen contain-scaled rect.
+# ---------------------------------------------------------------------------
+TITLE_IMG_W = 1536
+TITLE_IMG_H = 1024
+
+# Five Top-Runs rows. Coords measured against assets/title_screen.png (1536x1024).
+TITLE_BOARD_PNG_RECTS = (
+    pygame.Rect(1090, 655, 335, 48),
+    pygame.Rect(1090, 713, 335, 48),
+    pygame.Rect(1090, 771, 335, 48),
+    pygame.Rect(1090, 829, 335, 48),
+    pygame.Rect(1090, 887, 335, 48),
+)
+
+# Backwards-compatible aliases so other places in the file keep working.
+TITLE_SAFE = 32
+
+# 9-slice tables retained for in-game HUD use elsewhere.
+UI_PANEL_RECTS = {
+    "side_panel":  (254, 678, 514, 186),
+    "menu_panel":  (254, 678, 514, 186),
+    "menu_button": (312, 922, 350, 56),
+    "wide_button": (235, 529, 542, 82),
+    "gold_button": (312, 922, 350, 56),
+}
+
+UI_PANEL_SLICES = {
+    "side_panel":  ((86, 54, 106, 54), (28, 22, 34, 22)),
+    "menu_panel":  ((86, 54, 106, 54), (30, 24, 36, 24)),
+    "menu_button": ((62, 20, 62, 20), (24, 12, 24, 12)),
+    "wide_button": ((76, 28, 76, 28), (38, 16, 38, 16)),
+    "gold_button": ((62, 20, 62, 20), (22, 11, 22, 11)),
+}
+
+KEYCAP_RECTS = {
+    "small": (360, 66, 118, 102),
+    "wide": (374, 229, 348, 90),
+}
+
 
 class HUD:
     def __init__(self) -> None:
@@ -21,6 +67,12 @@ class HUD:
         self.font_big  = fonts.display(40, bold=True)
         self.font_huge = fonts.display(62, bold=True)
         self.font_title = fonts.display(74, bold=True)
+        # Title-screen typography system (display=Cinzel, body=IBM Plex).
+        self.title_head  = fonts.display(15, bold=True)   # panel headings
+        self.title_menu  = fonts.display(18, bold=True)   # menu item label
+        self.title_body  = fonts.body(13, weight="medium")
+        self.title_small = fonts.body(11, weight="regular")
+        self.title_tag   = fonts.display(14, bold=False)  # tagline
         # Hit-rects for the audio mute buttons (set during draw_audio_buttons).
         self.music_btn_rect: pygame.Rect | None = None
         self.sfx_btn_rect: pygame.Rect | None = None
@@ -34,8 +86,22 @@ class HUD:
         if inner and rect.width > 8 and rect.height > 8:
             pygame.draw.rect(surf, R.STONE_DARK, rect.inflate(-6, -6), 1)
 
-    def _title_panel(self, surf, rect: pygame.Rect):
-        R.carved_panel(surf, rect, fill=(44, 25, 14, 218), border=R.TITLE_GOLD_D)
+    def _title_panel(self, surf, rect: pygame.Rect, kind: str = "side_panel", *, content: bool = True):
+        source = UI_PANEL_RECTS.get(kind, UI_PANEL_RECTS["side_panel"])
+        src_border, dst_border = UI_PANEL_SLICES.get(kind, UI_PANEL_SLICES["side_panel"])
+        shadow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(shadow, (0, 0, 0, 118), shadow.get_rect(), border_radius=8)
+        surf.blit(shadow, (rect.x + 4, rect.y + 7))
+        if not R.draw_atlas_9slice(surf, "ui_panels.png", source, rect, src_border, dst_border):
+            R.carved_panel(surf, rect, fill=(44, 25, 14, 218), border=R.TITLE_GOLD_D)
+        if content:
+            inset_x = max(20, min(34, rect.width // 8))
+            inset_y = max(18, min(30, rect.height // 7))
+            inner = rect.inflate(-inset_x * 2, -inset_y * 2)
+            well = pygame.Surface(inner.size, pygame.SRCALPHA)
+            well.fill((17, 10, 6, 144))
+            surf.blit(well, inner.topleft)
+            pygame.draw.rect(surf, (156, 92, 35), inner, 1)
 
     def _center_text(self, surf, font, text, center, color=R.BONE, shadow=True):
         img = font.render(text, True, color)
@@ -44,14 +110,41 @@ class HUD:
         return img.get_rect(center=center)
 
     def _draw_keycap(self, surf, label: str, rect: pygame.Rect):
-        cap = pygame.Surface(rect.size, pygame.SRCALPHA)
-        cap.fill((30, 17, 9, 230))
-        surf.blit(cap, rect.topleft)
-        pygame.draw.rect(surf, R.TITLE_GOLD_D, rect, 2)
-        pygame.draw.rect(surf, R.GLYPH_GLOW, rect.inflate(-5, -5), 1)
-        txt = self.font_sm.render(label, True, R.TITLE_GOLD_HI)
+        source = KEYCAP_RECTS["wide" if rect.width > 58 else "small"]
+        cap_src = R.get_atlas_region("ui_keycaps.png", source)
+        if cap_src is not None:
+            surf.blit(pygame.transform.smoothscale(cap_src, rect.size), rect.topleft)
+        else:
+            cap = pygame.Surface(rect.size, pygame.SRCALPHA)
+            cap.fill((30, 17, 9, 230))
+            surf.blit(cap, rect.topleft)
+            pygame.draw.rect(surf, R.TITLE_GOLD_D, rect, 2)
+            pygame.draw.rect(surf, R.GLYPH_GLOW, rect.inflate(-5, -5), 1)
+        txt = self.title_small.render(label.upper(), True, R.TITLE_GOLD_HI)
         surf.blit(txt, (rect.centerx - txt.get_width() // 2,
                         rect.centery - txt.get_height() // 2))
+
+    def _draw_key_group(self, surf, keys: list[str], x: int, y: int) -> int:
+        cursor = x
+        for key in keys:
+            width = 64 if len(key) > 3 else 30
+            self._draw_keycap(surf, key, pygame.Rect(cursor, y, width, 22))
+            cursor += width + 4
+        return cursor
+
+    def _heading(self, surf, text: str, pos: tuple[int, int]) -> None:
+        # Warm-gold heading with subtle ink shadow + soft highlight ghost.
+        sh = self.title_head.render(text.upper(), True, R.TITLE_INK)
+        surf.blit(sh, (pos[0] + 1, pos[1] + 1))
+        body = self.title_head.render(text.upper(), True, R.TITLE_GOLD_HI)
+        surf.blit(body, pos)
+
+    def _online_badge(self, surf, text: str, rect: pygame.Rect) -> None:
+        # Themed copper/gold pill (no neon green) using the gold_button frame.
+        self._title_panel(surf, rect, "gold_button", content=False)
+        img = self.title_small.render(text.upper(), True, R.TITLE_INK)
+        surf.blit(img, (rect.centerx - img.get_width() // 2,
+                        rect.centery - img.get_height() // 2))
 
     def _draw_motes(self, surf, t: float):
         rng = random.Random(953)
@@ -62,59 +155,79 @@ class HUD:
             alpha = 40 + int(35 * (1 + math.sin(t * 1.7 + i * 0.9)))
             pygame.draw.circle(surf, (*R.GLYPH_GLOW, alpha), (x, y), 1)
 
-    def _draw_title_controls(self, surf, rect: pygame.Rect, *, gamepad_connected: bool):
-        self._title_panel(surf, rect)
-        self._center_text(surf, self.font_md, "CONTROLS", (rect.centerx, rect.y + 26), R.TITLE_GOLD_HI)
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (rect.x + 20, rect.y + 48), (rect.right - 20, rect.y + 48), 1)
-        rows = [
-            ("A D", "Run / Drift"),
-            ("SPACE", "Jump"),
-            ("SHIFT", "Dash"),
-            ("S", "Slide"),
-            ("E", "Glyph-Bomb"),
-        ]
-        y = rect.y + 62
-        for key, label in rows:
-            key_w = 70 if len(key) > 3 else 48
-            self._draw_keycap(surf, key, pygame.Rect(rect.x + 22, y, key_w, 30))
-            self._text(surf, self.font_md, label, (rect.x + 108, y + 3), R.BONE)
-            pygame.draw.line(surf, (170, 101, 45), (rect.x + 20, y + 38), (rect.right - 20, y + 38), 1)
-            y += 38
-        if gamepad_connected:
-            note = self.font_xs.render("Pad ready", True, R.SAND_LIGHT)
-            surf.blit(note, (rect.centerx - note.get_width() // 2, rect.bottom - 21))
+    # ------------------------------------------------------------------
+    # Title — composed PNG background + minimal dynamic overlays.
+    # ------------------------------------------------------------------
+    def _title_image_rect(self) -> pygame.Rect:
+        """Return the on-screen rect where the title PNG is drawn (contain-fit)."""
+        scale = SCREEN_H / TITLE_IMG_H
+        w = int(round(TITLE_IMG_W * scale))
+        h = SCREEN_H
+        x = (SCREEN_W - w) // 2
+        return pygame.Rect(x, 0, w, h)
 
-    def _draw_title_leaderboard(self, surf, scores, rect: pygame.Rect,
-                                *, highlight_name: str | None, status: str | None):
-        self._title_panel(surf, rect)
-        pygame.draw.circle(surf, R.TITLE_GOLD, (rect.x + 28, rect.y + 28), 10)
-        pygame.draw.rect(surf, R.TITLE_GOLD_D, (rect.x + 22, rect.y + 34, 12, 8))
-        self._text(surf, self.font_md, "TOP RUNS", (rect.x + 48, rect.y + 16), R.TITLE_GOLD_HI)
-        if status:
-            st = self.font_xs.render(status.upper(), True, R.CHARGE_FULL if "online" in status.lower() else R.SAND_LIGHT)
-            surf.blit(st, (rect.right - st.get_width() - 18, rect.y + 22))
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (rect.x + 18, rect.y + 50), (rect.right - 18, rect.y + 50), 1)
+    def _title_to_screen(self, png_rect: pygame.Rect) -> pygame.Rect:
+        """Translate a rect from PNG-native coords to on-screen coords."""
+        img = self._title_image_rect()
+        sx = img.width / TITLE_IMG_W
+        sy = img.height / TITLE_IMG_H
+        return pygame.Rect(
+            img.x + int(round(png_rect.x * sx)),
+            img.y + int(round(png_rect.y * sy)),
+            max(1, int(round(png_rect.w * sx))),
+            max(1, int(round(png_rect.h * sy))),
+        )
 
-        top = scores[0] if scores else None
-        if not top:
-            self._center_text(surf, self.font_sm, "No scores yet", rect.center, R.BONE)
-            return
-        name = str(top.get("name", "?"))[:13]
-        dist = int(top.get("distance_m", 0))
-        glyphs = int(top.get("glyphs", 0))
-        color = R.GLYPH_GLOW if highlight_name and name == highlight_name else R.BONE
-        self._text(surf, self.font_md, "1.", (rect.x + 42, rect.y + 78), R.TITLE_GOLD_HI)
-        name_font = self.font_lg if len(name) <= 8 else self.font_md
-        self._text(surf, name_font, name, (rect.x + 86, rect.y + 70), color)
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (rect.x + 42, rect.y + 128), (rect.right - 42, rect.y + 128), 1)
-        self._text(surf, self.font_sm, f"Distance: {dist} m", (rect.x + 76, rect.y + 142), R.BONE)
-        self._text(surf, self.font_sm, f"Glyphs: {glyphs}", (rect.x + 96, rect.y + 166), R.SAND_LIGHT)
-        if len(scores) > 1:
-            next_score = scores[1]
-            runner = str(next_score.get("name", "?"))[:10]
-            runner_dist = int(next_score.get("distance_m", 0))
-            small = self.font_xs.render(f"2. {runner}  {runner_dist} m", True, R.SAND_LIGHT)
-            surf.blit(small, (rect.x + 96, rect.bottom - 28))
+    def _board_screen_rects(self) -> list[pygame.Rect]:
+        return [self._title_to_screen(r) for r in TITLE_BOARD_PNG_RECTS]
+
+    def _draw_overlay_board(self, surf, scores, *, highlight_name: str | None):
+        # The baked board frame is gorgeous; we just need to hide the
+        # placeholder row text and stamp the real scores on top.
+        rects = self._board_screen_rects()
+        scores = (scores or [])[:5]
+        for i, br in enumerate(rects):
+            # Fully opaque dark plate that exactly covers the baked row text.
+            radius = max(4, br.height // 3)
+            plate = pygame.Surface(br.size, pygame.SRCALPHA)
+            pygame.draw.rect(plate, (20, 13, 8, 255), plate.get_rect(),
+                             border_radius=radius)
+            surf.blit(plate, br.topleft)
+            pygame.draw.rect(surf, (180, 130, 60), br, width=1,
+                             border_radius=radius)
+            if i >= len(scores):
+                # Empty-row hint: three faint dots.
+                dot_color = (200, 160, 90)
+                cy = br.centery
+                for dx in (-10, 0, 10):
+                    pygame.draw.circle(surf, dot_color,
+                                       (br.centerx + dx, cy), 2)
+                continue
+            score = scores[i]
+            name = str(score.get("name", "?"))[:12]
+            dist = int(score.get("distance_m", 0))
+            is_me = (highlight_name and name == highlight_name)
+            num_color = R.TITLE_GOLD_HI
+            name_color = R.GLYPH_GLOW if is_me else R.BONE
+            dist_color = R.SAND_LIGHT
+            # Number.
+            num_img = self.title_body.render(f"{i + 1}.", True, num_color)
+            num_sh  = self.title_body.render(f"{i + 1}.", True, R.TITLE_INK)
+            ny = br.centery - num_img.get_height() // 2
+            surf.blit(num_sh, (br.x + 9, ny + 1))
+            surf.blit(num_img, (br.x + 8, ny))
+            # Name.
+            nm_img = self.title_body.render(name, True, name_color)
+            nm_sh  = self.title_body.render(name, True, R.TITLE_INK)
+            surf.blit(nm_sh, (br.x + 35, ny + 1))
+            surf.blit(nm_img, (br.x + 34, ny))
+            # Distance (right-aligned).
+            d_text = f"{dist}m"
+            d_img = self.title_body.render(d_text, True, dist_color)
+            d_sh  = self.title_body.render(d_text, True, R.TITLE_INK)
+            dx = br.right - d_img.get_width() - 10
+            surf.blit(d_sh, (dx + 1, ny + 1))
+            surf.blit(d_img, (dx, ny))
 
     def _text(self, surf, font, text, pos, color=R.BONE, shadow=True):
         if shadow:
@@ -181,8 +294,16 @@ class HUD:
 
         col_m = R.STONE_DARK if music_muted else R.GLYPH_GLOW
         col_s = R.STONE_DARK if sfx_muted else R.BONE
-        self._draw_note_icon(surf, m_rect.centerx, m_rect.centery, music_muted, col_m)
-        self._draw_speaker_icon(surf, s_rect.centerx, s_rect.centery, sfx_muted, col_s)
+        music_icon = R.get_sheet_frame("ui_audio_icons.png", 2, 2, 1 if music_muted else 0)
+        sfx_icon = R.get_sheet_frame("ui_audio_icons.png", 2, 2, 3 if sfx_muted else 2)
+        if music_icon is not None:
+            surf.blit(pygame.transform.smoothscale(music_icon, (18, 18)), (m_rect.x + 3, m_rect.y + 2))
+        else:
+            self._draw_note_icon(surf, m_rect.centerx, m_rect.centery, music_muted, col_m)
+        if sfx_icon is not None:
+            surf.blit(pygame.transform.smoothscale(sfx_icon, (18, 18)), (s_rect.x + 3, s_rect.y + 2))
+        else:
+            self._draw_speaker_icon(surf, s_rect.centerx, s_rect.centery, sfx_muted, col_s)
 
         # Tiny key hint below.
         hint = self.font_xs.render("M  N", True, R.SAND_LIGHT)
@@ -243,52 +364,21 @@ class HUD:
                    player_name: str | None = None,
                    board_status: str | None = None,
                    gamepad_connected: bool = False):
-        surf.blit(R.get_title_background(SCREEN_W, SCREEN_H), (0, 0))
+        # 1) Letterbox/clear background, then blit the composed title PNG.
+        surf.fill((10, 7, 5))
+        img_rect = self._title_image_rect()
+        title_img = R.get_scaled_asset("title_screen.png", img_rect.width, img_rect.height,
+                                       alpha=False, cover=False)
+        if title_img is not None:
+            surf.blit(title_img, img_rect.topleft)
+        else:
+            # Fallback if the asset is missing: legacy background.
+            surf.blit(R.get_title_background(SCREEN_W, SCREEN_H), (0, 0))
+
         t = pygame.time.get_ticks() / 1000.0
-        self._draw_motes(surf, t)
-        R.draw_letterbox(surf, 20, 135)
 
-        pulse = int(10 * (1 + math.sin(t * 2.4)))
-        R.glow_text(
-            surf, self.font_title, "BABEL'S GLYPH", (SCREEN_W // 2, 82),
-            fill=R.TITLE_GOLD, glow=R.GLYPH_GLOW_S, radius=5 + pulse // 6,
-        )
-        self._center_text(
-            surf, self.font_md, "An Endless Run Through Ancient Tech",
-            (SCREEN_W // 2, 140), R.TITLE_GOLD_HI,
-        )
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (330, 162), (630, 162), 1)
-        welcome_rect = pygame.Rect(SCREEN_W // 2 - 148, 168, 296, 52)
-        plate = pygame.Surface(welcome_rect.size, pygame.SRCALPHA)
-        plate.fill((25, 14, 8, 135))
-        surf.blit(plate, welcome_rect.topleft)
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (welcome_rect.x + 28, welcome_rect.y), (welcome_rect.right - 28, welcome_rect.y), 1)
-        pygame.draw.line(surf, R.TITLE_GOLD_D, (welcome_rect.x + 28, welcome_rect.bottom), (welcome_rect.right - 28, welcome_rect.bottom), 1)
-        welcome_text = f"Welcome, {player_name}" if player_name else "Set your name with P"
-        self._center_text(surf, self.font_md, welcome_text, (SCREEN_W // 2, 184), R.BONE)
-        small = "Press P to change name" if player_name else "Leaderboard name required for global scores"
-        self._center_text(surf, self.font_xs, small, (SCREEN_W // 2, 207), R.SAND_LIGHT, shadow=False)
-
-        self._draw_title_controls(
-            surf, pygame.Rect(44, 188, 270, 258),
-            gamepad_connected=gamepad_connected,
-        )
-        self._draw_title_leaderboard(
-            surf, scores or [], pygame.Rect(626, 188, 294, 212),
-            highlight_name=player_name, status=board_status,
-        )
-
-        cta = pygame.Rect(270, 424, 420, 54)
-        R.carved_panel(surf, cta, fill=(45, 25, 13, 210), border=R.COPPER_LIGHT, glow_alpha=80)
-        start = self.font_lg.render("Press SPACE or A to Start", True, R.TITLE_GOLD_HI)
-        surf.blit(start, (cta.centerx - start.get_width() // 2,
-                          cta.centery - start.get_height() // 2))
-        pygame.draw.line(surf, R.GLYPH_GLOW_S, (cta.x + 38, cta.bottom - 9), (cta.right - 38, cta.bottom - 9), 2)
-
-        if highscore:
-            hs_rect = pygame.Rect(364, 496, 232, 38)
-            R.carved_panel(surf, hs_rect, fill=(38, 23, 13, 220), border=R.TITLE_GOLD_D, glow_alpha=35)
-            self._center_text(surf, self.font_md, f"BEST RUN: {int(highscore)} m", hs_rect.center, R.TITLE_GOLD_HI)
+        # 2) Dynamic overlay — just the top-runs rows.
+        self._draw_overlay_board(surf, scores or [], highlight_name=player_name)
 
     def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record,
                       *, scores=None, player_name: str | None = None,
