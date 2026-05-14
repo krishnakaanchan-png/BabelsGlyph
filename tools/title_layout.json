@@ -1,0 +1,55 @@
+{
+    "_comment": "Title-screen layout. Coords are in the game's logical 960x544 canvas. Multiply by 2 for the 1920x1088 deliverable.",
+    "canvas": { "logical": [960, 544], "preview": [1920, 1088] },
+    "safe_margin": 32,
+    "hero_window": { "x": 264, "y": 180, "w": 432, "h": 260, "_note": "Kept clear between the two stacked side columns." },
+    "logo": { "y": 12, "width": 380, "max_height": 150 },
+    "tagline": { "gap_below_logo": 6, "alpha": 190 },
+    "menu_cluster": {
+        "rect": { "x": 44, "y": 188, "w": 208, "h": 168 },
+        "items": ["Start", "Options", "Credits", "Quit"],
+        "panel_kind": "menu_panel",
+        "button_kind": "menu_button",
+        "padding": { "top": 16, "bottom": 16, "x": 20 },
+        "gap": 6
+    },
+    "controls_panel": {
+        "rect": { "x": 44, "y": 364, "w": 208, "h": 152 },
+        "rows": [["A,D", "Move"], ["Space", "Jump"], ["Shift", "Dash"], ["E", "Bomb"]]
+    },
+    "topruns_panel": {
+        "rect": { "x": 708, "y": 188, "w": 208, "h": 196 },
+        "max_rows": 3,
+        "online_pill": { "tint": "copper-gold", "kind": "gold_button" }
+    },
+    "cta_banner": {
+        "rect": { "x": 330, "y": 484, "w": 300, "h": 34 },
+        "label": "Space / A : Select",
+        "kind": "wide_button"
+    },
+    "fonts": {
+        "logo": "title_logo.png (image)",
+        "tagline":   { "family": "display (Cinzel)", "size": 14 },
+        "menu_item": { "family": "display (Cinzel)", "size": 18 },
+        "heading":   { "family": "display (Cinzel)", "size": 15 },
+        "body":      { "family": "body (IBM Plex)",  "size": 13 },
+        "small":     { "family": "body (IBM Plex)",  "size": 11 },
+        "cta":       { "family": "body (IBM Plex)",  "size": 21 }
+    },
+    "palette": {
+        "title_gold":    "#ffc442",
+        "title_gold_hi": "#fff6b8",
+        "title_gold_d":  "#964b16",
+        "ink":           "#100a08",
+        "bone":          "#ecdcbc",
+        "sand_light":    "#ecce98",
+        "glyph_glow":    "#ffd26e"
+    },
+    "panels": {
+        "side_panel":  { "src": [254, 678, 514, 186], "src_border": [86, 54, 106, 54], "dst_border": [28, 22, 34, 22] },
+        "menu_panel":  { "src": [254, 678, 514, 186], "src_border": [86, 54, 106, 54], "dst_border": [30, 24, 36, 24] },
+        "menu_button": { "src": [312, 922, 350, 56],  "src_border": [62, 20, 62, 20], "dst_border": [24, 12, 24, 12] },
+        "wide_button": { "src": [235, 529, 542, 82],  "src_border": [76, 28, 76, 28], "dst_border": [38, 16, 38, 16] },
+        "gold_button": { "src": [312, 922, 350, 56],  "src_border": [62, 20, 62, 20], "dst_border": [22, 11, 22, 11] }
+    }
+}

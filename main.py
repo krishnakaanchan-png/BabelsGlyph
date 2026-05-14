@@ -15,7 +15,7 @@ from game.hud import HUD
 from game import particles, audio, music, profile, leaderboard, render as R
 
 
-NAME    = "name"
+NAME    = "name"  # deprecated; kept only so old save files don't crash
 TITLE   = "title"
 PLAYING = "playing"
 DEAD    = "dead"
@@ -53,11 +53,12 @@ class Game:
         self.highscore_m = 0.0
         self._submitted_this_run = False
         self._reset_world()
-        # Decide where to start: name entry on first launch, otherwise title.
-        if profile.has_name():
-            self.scene = TITLE
-        else:
-            self._enter_name_scene()
+        # Title is always the entry point now; the title scene also handles
+        # inline name entry on first launch (see _update_title).
+        self.scene = TITLE
+        if not profile.has_name():
+            self.input.text_mode = True
+            self.input.reset_text("")
 
     def _reset_world(self) -> None:
         particles.reset()
@@ -75,15 +76,13 @@ class Game:
         self._reset_world()
         self.scene = PLAYING
 
-    def _enter_name_scene(self) -> None:
-        self.scene = NAME
+    def _enter_name_entry(self) -> None:
         self.input.text_mode = True
-        self.input.reset_text(initial=profile.get_name() if profile.has_name() else "")
+        self.input.reset_text(profile.get_name() if profile.has_name() else "")
 
-    def _exit_name_scene(self) -> None:
+    def _exit_name_entry(self) -> None:
         self.input.text_mode = False
         self.input.reset_text("")
-        self.scene = TITLE
 
     # ------------------------------------------------------------------
     def _handle_audio_toggles(self) -> None:
@@ -113,23 +112,18 @@ class Game:
             # AFTER the event pump so movement is up to date for this frame.
             self.input.end_frame()
 
-            # Esc handling is scene-dependent in NAME (cancel/exit), otherwise
-            # it quits the game.
-            if self.scene != NAME and self.input.quit_pressed:
+            # Esc handling: while typing a name on the title screen Esc may
+            # cancel the prompt (if we already have a name) or quit (first run).
+            if self.input.quit_pressed:
                 pygame.quit()
                 sys.exit(0)
 
-            # Audio mute toggles work in any non-text scene.
-            if self.scene != NAME:
+            # Audio mute toggles always work outside of text entry.
+            if not self.input.text_mode:
                 self._handle_audio_toggles()
 
-            if self.scene == NAME:
-                self._update_name_entry()
-            elif self.scene == TITLE:
-                if self.input.start_pressed or self.input.restart_pressed:
-                    self.start_play()
-                elif self.input.rename_pressed:
-                    self._enter_name_scene()
+            if self.scene == TITLE:
+                self._update_title()
             elif self.scene == PLAYING:
                 self._update_play(dt)
             elif self.scene == DEAD:
@@ -153,10 +147,22 @@ class Game:
         if self.input.text_submit:
             stored = profile.set_name(self.input.text_buffer)
             audio.get().play("glyph")
-            self._exit_name_scene()
+            self._exit_name_entry()
         elif self.input.text_cancel and profile.has_name():
             # Allow Esc to back out only if we already had a name.
-            self._exit_name_scene()
+            self._exit_name_entry()
+
+    def _update_title(self) -> None:
+        if self.input.text_mode:
+            self._update_name_entry()
+            if self.input.text_cancel and not profile.has_name():
+                pygame.quit()
+                sys.exit(0)
+            return
+        if self.input.start_pressed or self.input.restart_pressed:
+            self.start_play()
+        elif self.input.rename_pressed:
+            self._enter_name_entry()
 
     def _update_play(self, dt: float) -> None:
         # Order matters: world scroll first, then player, then entities.
@@ -213,14 +219,8 @@ class Game:
         status = board.status()
         pname = profile.get_name() if profile.has_name() else None
 
-        if self.scene == NAME:
+        if self.scene == TITLE:
             blink_on = (pygame.time.get_ticks() // 500) % 2 == 0
-            self.hud.draw_name_entry(
-                self.screen,
-                current_text=self.input.text_buffer,
-                blink_on=blink_on,
-            )
-        elif self.scene == TITLE:
             self.hud.draw_title(
                 self.screen,
                 highscore=self.highscore_m if self.highscore_m else None,
@@ -228,6 +228,8 @@ class Game:
                 player_name=pname,
                 board_status=status,
                 gamepad_connected=self.input.gamepad_connected,
+                name_prompt=self.input.text_buffer if self.input.text_mode else None,
+                blink_on=blink_on,
             )
         elif self.scene == PLAYING:
             self.hud.draw_playing(
@@ -263,9 +265,9 @@ class Game:
                 gamepad_connected=self.input.gamepad_connected,
             )
 
-        # Audio buttons are drawn last so they sit on top of every overlay
-        # (but not on the name-entry screen, where they'd be confusing).
-        if self.scene != NAME:
+        # Audio buttons sit on top of every overlay (but stay hidden during
+        # inline name entry, where they would be a confusing extra click target).
+        if not self.input.text_mode:
             self.hud.draw_audio_buttons(
                 self.screen,
                 music_muted=music.get().muted,

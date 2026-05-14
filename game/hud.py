@@ -363,7 +363,9 @@ class HUD:
     def draw_title(self, surf, highscore=None, *, scores=None,
                    player_name: str | None = None,
                    board_status: str | None = None,
-                   gamepad_connected: bool = False):
+                   gamepad_connected: bool = False,
+                   name_prompt: str | None = None,
+                   blink_on: bool = True):
         # 1) Letterbox/clear background, then blit the composed title PNG.
         surf.fill((10, 7, 5))
         img_rect = self._title_image_rect()
@@ -379,6 +381,36 @@ class HUD:
 
         # 2) Dynamic overlay — just the top-runs rows.
         self._draw_overlay_board(surf, scores or [], highlight_name=player_name)
+
+        # 3) Inline name-entry prompt (only when no profile name is saved).
+        if name_prompt is not None:
+            self._draw_name_prompt(surf, name_prompt, blink_on)
+
+    def _draw_name_prompt(self, surf, text: str, blink_on: bool, max_len: int = 12):
+        """Small themed panel asking for the player's name on the title screen.
+        Sits dead-center so it covers the baked 'PRESS SPACE TO START' call-to-action
+        until the name has been inscribed."""
+        w, h = 360, 84
+        rect = pygame.Rect((SCREEN_W - w) // 2, (SCREEN_H - h) // 2 + 40, w, h)
+        radius = 10
+        plate = pygame.Surface(rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(plate, (20, 13, 8, 240), plate.get_rect(), border_radius=radius)
+        surf.blit(plate, rect.topleft)
+        pygame.draw.rect(surf, (180, 130, 60), rect, width=1, border_radius=radius)
+
+        label = self.title_tag.render("INSCRIBE THY NAME", True, R.TITLE_GOLD_HI)
+        surf.blit(label, (rect.centerx - label.get_width() // 2, rect.y + 8))
+
+        shown = (text or "")[:max_len]
+        caret = "_" if blink_on else " "
+        name_img = self.font_md.render(shown + caret, True, R.BONE)
+        surf.blit(name_img,
+                  (rect.centerx - name_img.get_width() // 2, rect.y + 28))
+
+        hint = self.font_xs.render("ENTER to confirm", True, (200, 160, 90))
+        surf.blit(hint,
+                  (rect.centerx - hint.get_width() // 2,
+                   rect.bottom - hint.get_height() - 6))
 
     def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record,
                       *, scores=None, player_name: str | None = None,
