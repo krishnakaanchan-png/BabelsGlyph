@@ -29,3 +29,24 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Secrets / local config
+.env
+.env.*
+
+# Generated media / promo artifacts
+*.pptx
+*.mp4
+*.mp3
+music_preview.wav
+sfx_preview.wav
+
+# Throwaway preview/debug captures
+alignment_preview*.png
+title_screen_*.png
+tile_crop_preview.png
+fx_glows_preview.png
+gameplay_assets_as_is.png
+dbg_stdout.txt
+dbg_stderr.txt
+tools/_*.png

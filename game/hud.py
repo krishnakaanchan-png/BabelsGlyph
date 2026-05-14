@@ -23,11 +23,6 @@ ZONE_NAMES = ["Sandstone Outskirts", "Da Vinci's Forge", "Sky Workshop"]
 TITLE_IMG_W = 1536
 TITLE_IMG_H = 1024
 
-TITLE_MENU_ITEMS = ()  # new title art bakes "Press Space to Start" — no menu items.
-
-# Empty: nothing for the overlay to highlight.
-TITLE_MENU_PNG_RECTS: tuple[pygame.Rect, ...] = ()
-
 # Five Top-Runs rows. Coords measured against assets/title_screen.png (1536x1024).
 TITLE_BOARD_PNG_RECTS = (
     pygame.Rect(1090, 655, 335, 48),
@@ -78,8 +73,6 @@ class HUD:
         self.title_body  = fonts.body(13, weight="medium")
         self.title_small = fonts.body(11, weight="regular")
         self.title_tag   = fonts.display(14, bold=False)  # tagline
-        # Menu selection (Start is the default; arrow keys can move it later).
-        self.title_menu_index = 0
         # Hit-rects for the audio mute buttons (set during draw_audio_buttons).
         self.music_btn_rect: pygame.Rect | None = None
         self.sfx_btn_rect: pygame.Rect | None = None
@@ -185,36 +178,8 @@ class HUD:
             max(1, int(round(png_rect.h * sy))),
         )
 
-    def _menu_screen_rects(self) -> list[pygame.Rect]:
-        return [self._title_to_screen(r) for r in TITLE_MENU_PNG_RECTS]
-
     def _board_screen_rects(self) -> list[pygame.Rect]:
         return [self._title_to_screen(r) for r in TITLE_BOARD_PNG_RECTS]
-
-    def _draw_overlay_menu(self, surf, t: float):
-        # The baked title PNG already has beautiful button plaques with labels.
-        # We don't redraw anything except a soft gold selection ring on the
-        # currently chosen item, so the art reads cleanly.
-        rects = self._menu_screen_rects()
-        sel = self.title_menu_index
-        if not (0 <= sel < len(rects)):
-            return
-        br = rects[sel]
-        radius = max(8, br.height // 2)
-        pulse = 0.5 + 0.5 * math.sin(t * 2.6)
-
-        # Outer warm glow (additive, breathing).
-        glow_alpha = 60 + int(50 * pulse)
-        glow = pygame.Surface((br.width + 16, br.height + 16), pygame.SRCALPHA)
-        pygame.draw.rect(glow, (255, 196, 66, glow_alpha), glow.get_rect(),
-                         width=6, border_radius=radius + 4)
-        surf.blit(glow, (br.x - 8, br.y - 8),
-                  special_flags=pygame.BLEND_RGBA_ADD)
-
-        # Crisp opaque gold rim hugging the baked button.
-        pygame.draw.rect(surf, R.TITLE_GOLD_HI, br, width=3, border_radius=radius)
-        pygame.draw.rect(surf, (255, 246, 184), br.inflate(-6, -6),
-                         width=1, border_radius=max(4, radius - 3))
 
     def _draw_overlay_board(self, surf, scores, *, highlight_name: str | None):
         # The baked board frame is gorgeous; we just need to hide the
@@ -412,8 +377,7 @@ class HUD:
 
         t = pygame.time.get_ticks() / 1000.0
 
-        # 2) Dynamic overlays — only the menu and the top-runs rows.
-        self._draw_overlay_menu(surf, t)
+        # 2) Dynamic overlay — just the top-runs rows.
         self._draw_overlay_board(surf, scores or [], highlight_name=player_name)
 
     def draw_gameover(self, surf, distance_m, glyphs, highscore, new_record,
