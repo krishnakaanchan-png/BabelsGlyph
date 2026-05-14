@@ -23,8 +23,8 @@ WINDOW_H     = SCREEN_H * RENDER_SCALE
 
 # Auto-scroll: pixels per second.
 SCROLL_BASE  = 90.0
-SCROLL_MAX   = 220.0
-SCROLL_RAMP  = 6.0        # additional px/s added per 1000 px of distance
+SCROLL_MAX   = 340.0
+SCROLL_RAMP  = 16.0       # additional px/s added per 1000 px of distance
 
 # Gameplay.
 START_HP     = 3
